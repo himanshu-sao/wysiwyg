@@ -1,0 +1,16 @@
+{
+  "name": "ai-ui-editor",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "extension",
+    "middleware",
+    "sample-project",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w sample-project",
+    "build": "npm run build -w sample-project",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

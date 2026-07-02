@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "AI UI Editor",
+  "version": "1.0.0",
+  "description": "Right-click any UI element and describe a visual change to apply it to your source code.",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "https://*/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popup/*", "content-script.js", "background.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

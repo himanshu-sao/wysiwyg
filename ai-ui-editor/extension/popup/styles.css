@@ -1,0 +1,12 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+body {
+  min-width: 360px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
