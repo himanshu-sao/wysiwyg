@@ -24,6 +24,11 @@ export interface EditContext {
   sourceFile?: string; // If resolved via sourcemap
   sourceLine?: number;
   sourceCode?: string; // Full file content
+  // P7: sourcemap-resolution inputs sent to the middleware. Set the originating
+  // <script> src here; the middleware resolves sourceFile/sourceLine/sourceCode.
+  scriptUrl?: string; // e.g. "/src/components/Card.tsx"
+  generatedLine?: number; // 1-based line of the element in the served script
+  generatedColumn?: number; // 1-based column in the served script
   packageJson?: any;
   tailwindConfig?: any;
 }
@@ -50,6 +55,9 @@ export interface EditResponse {
   options: EditOption[];
   followUpQuestions?: string[];
   error?: string;
+  // P7 / MVP-18: set when sourcemap resolution could NOT locate the source,
+  // so the popup should prompt the user to pick a file manually.
+  needsFileSelection?: boolean;
 }
 
 // Request to validate a modified file

@@ -16,6 +16,11 @@ export interface EditContext {
   sourceFile?: string; // If resolved via sourcemap
   sourceLine?: number;
   sourceCode?: string; // Full file content
+  // P7: sourcemap-resolution inputs sent by the content script. Middleware
+  // resolves these to sourceFile/sourceLine/sourceCode before calling the AI.
+  scriptUrl?: string; // originating <script src>, e.g. "/src/components/Card.tsx"
+  generatedLine?: number; // 1-based line of the element in the served script
+  generatedColumn?: number; // 1-based column in the served script
   packageJson?: any;
   tailwindConfig?: any;
 }
@@ -42,6 +47,9 @@ export interface EditResponse {
   options: EditOption[];
   followUpQuestions?: string[];
   error?: string;
+  // P7 / MVP-18: set when sourcemap resolution could NOT locate the source,
+  // so the popup should prompt the user to pick a file manually.
+  needsFileSelection?: boolean;
 }
 
 // Request to validate a modified file
@@ -77,6 +85,20 @@ export interface WriteRequest {
 export interface WriteResponse {
   success: boolean;
   commitHash?: string;
+  error?: string;
+}
+
+// P7 / MVP-18: Request to read a file (so the popup can offer manual
+// file-selection when sourcemap resolution fails).
+export interface ReadRequest {
+  file: string;
+  projectRoot?: string;
+}
+
+// Response from /api/files/read
+export interface ReadResponse {
+  content: string;
+  file: string;
   error?: string;
 }
 

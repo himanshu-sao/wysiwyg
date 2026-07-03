@@ -10,6 +10,13 @@ const App: React.FC = () => {
   const [contextHint, setContextHint] = useState('');
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+  // P7 / MVP-18: when sourcemap resolution fails the middleware asks us to let
+  // the user pick a file manually. The picked path + its content override the
+  // option's file and the diff base (also fixes P3 — applyDiff had '' base).
+  const [needsFileSelection, setNeedsFileSelection] = useState(false);
+  const [pickedFile, setPickedFile] = useState('');
+  const [pickedFileContent, setPickedFileContent] = useState<string | null>(null);
+  const [pickingFile, setPickingFile] = useState(false);
 
   // Keep a stable listener reference so the cleanup actually removes it
   // (the old code passed `removeListener(() => {})` — a new arrow each time,
@@ -45,6 +52,7 @@ const App: React.FC = () => {
           }
           // Otherwise it's an AI edit-options response.
           setOptions(data.options || []);
+          setNeedsFileSelection(!!data.needsFileSelection);
           setLoading(false);
           setProgress('');
           break;
@@ -93,6 +101,8 @@ const App: React.FC = () => {
     setLoading(true);
     setError('');
     setOptions([]);
+    setNeedsFileSelection(false);
+    setPickedFileContent(null);
     setProgress('Sending request to AI...');
 
     const request: EditRequest = {
@@ -115,8 +125,21 @@ const App: React.FC = () => {
   async function handleApply(option: EditOption) {
     if (!confirm(`Apply this change: ${option.description}?`)) return;
 
-    const file = option.file;
-    const content = applyDiff(elementContext?.context.sourceCode || '', option.diff);
+    // P7 / P3: prefer the user's manually-picked file+content when present
+    // (sourcemap failed); otherwise use the resolved sourceCode from the
+    // middleware and the option's file. This makes applyDiff produce a full,
+    // correct file instead of just the added diff lines.
+    const file = pickedFile && pickedFileContent !== null ? pickedFile : option.file;
+    const baseSource = pickedFile && pickedFileContent !== null
+      ? pickedFileContent
+      : elementContext?.context.sourceCode || '';
+    const content = applyDiff(baseSource, option.diff);
+
+    if (!baseSource.trim()) {
+      // Still no source to diff against — refuse rather than write garbage.
+      setError('No source content to apply the diff against. Pick a file manually below.');
+      return;
+    }
 
     // Validate before write (MVP-13/17). If validation fails, surface errors
     // and refuse to write. The popup *also* receives server-error via the
@@ -126,16 +149,40 @@ const App: React.FC = () => {
         type: 'send-to-server',
         data: { endpoint: '/api/files/validate', body: { file, content } },
       }
-      // The validate result comes back asynchronously as server-response.
-      // We write only after observing a `valid` result — handled below in
-      // the validateResult effect. For the MVP we issue validate, then write.
     );
 
-    // Stash pending write so a subsequent server-response (validate result)
-    // can trigger the actual /write. This keeps the apply flow honest: the
-    // file is never written unless validation reported valid (or validation
-    // itself is unavailable — see note).
     pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
+  }
+
+  // P7 / MVP-18: user manually picks a source file when sourcemap resolution
+  // failed. We fetch its content via GET /api/files/read so handleApply can
+  // use it as the diff base.
+  async function handlePickFile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pickedFile.trim()) return;
+    setPickingFile(true);
+    setError('');
+    // The background 'send-to-server' relay only POSTs JSON bodies; /read is a
+    // GET, so we fetch directly from the popup (CORS allows chrome-extension
+    // origin; the sample project root comes from the captured element context).
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/files/read?file=${encodeURIComponent(pickedFile)}&projectRoot=${encodeURIComponent(elementContext?.context.projectRoot || '')}`
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        setError(`Could not read "${pickedFile}": ${txt}`);
+        setPickingFile(false);
+        return;
+      }
+      const data = await res.json();
+      setPickedFileContent(data.content || '');
+      setNeedsFileSelection(false);
+      setError('');
+    } catch (err: any) {
+      setError(`Failed to read file: ${err.message}`);
+    }
+    setPickingFile(false);
   }
 
   async function doWrite(file: string, content: string, commitMessage: string) {
@@ -200,6 +247,33 @@ const App: React.FC = () => {
         <div className="flex items-center justify-center p-4">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
           <span className="ml-2 text-sm">{progress || 'Generating...'}</span>
+        </div>
+      )}
+
+      {needsFileSelection && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+          Couldn't locate the source via sourcemap. Pick the file manually:
+          <form onSubmit={handlePickFile} className="mt-2 flex gap-2">
+            <input
+              value={pickedFile}
+              onChange={(e) => setPickedFile(e.target.value)}
+              placeholder="src/components/Card.tsx"
+              className="flex-1 p-1 border rounded text-xs"
+            />
+            <button
+              type="submit"
+              disabled={pickingFile}
+              className="bg-amber-600 text-white px-2 py-1 rounded text-xs"
+            >
+              {pickingFile ? 'Reading...' : 'Use'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {pickedFileContent !== null && (
+        <div className="mb-3 text-xs text-green-700">
+          Using picked file: <code>{pickedFile}</code>
         </div>
       )}
 

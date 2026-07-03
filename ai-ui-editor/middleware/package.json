@@ -17,6 +17,7 @@
     "fastify-plugin": "^4.0.0",
     "openai": "^6.45.0",
     "simple-git": "^3.22.0",
+    "source-map": "^0.7.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {

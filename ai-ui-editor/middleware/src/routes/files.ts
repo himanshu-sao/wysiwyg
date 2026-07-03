@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
-import { WriteRequest, WriteResponse, ValidateRequest, ValidateResponse } from '../shared/types';
+import { promises as fs } from 'fs';
+import { WriteRequest, WriteResponse, ValidateRequest, ValidateResponse, ReadRequest, ReadResponse } from '../shared/types';
 import { validateDiff } from '../services/DiffValidator';
 import { writeFileWithGit } from '../services/GitManager';
 import { safeFilePath, resolveProjectRoot } from '../services/PathSanitizer';
@@ -60,6 +61,36 @@ const filesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(status).send({
         success: false,
         error: error.message || 'Failed to write file',
+      });
+    }
+  });
+
+  // P7 / MVP-18: read a source file so the popup can let the user browse + select
+  // the actual file when sourcemap resolution fails.
+  app.get<{ Querystring: ReadRequest }>('/read', async (request, reply) => {
+    try {
+      const { file, projectRoot } = request.query as ReadRequest;
+      if (!file) {
+        return reply.status(400).send({
+          error: 'file query parameter is required',
+        });
+      }
+
+      const root = resolveProjectRoot(projectRoot, DEFAULT_PROJECT_ROOT);
+      const absPath = safeFilePath(root, file);
+
+      const content = await fs.readFile(absPath, 'utf-8');
+      const response: ReadResponse = {
+        content,
+        file,
+      };
+      return reply.send(response);
+    } catch (error: any) {
+      const status = /PathSanitizer/.test(error.message) ? 400 : 500;
+      return reply.status(status).send({
+        content: '',
+        file: request.query.file ?? '',
+        error: error.message || 'Failed to read file',
       });
     }
   });

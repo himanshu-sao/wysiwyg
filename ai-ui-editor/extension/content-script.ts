@@ -26,7 +26,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 function captureElementContext(
   x?: number,
   y?: number
-): { element: ElementContext; context: { url: string; framework: string; projectRoot: string } } | null {
+): { element: ElementContext; context: { url: string; framework: string; projectRoot: string; scriptUrl?: string } } | null {
   const target =
     (typeof x === 'number' && typeof y === 'number'
       ? (document.elementFromPoint(x, y) as HTMLElement | null)
@@ -91,6 +91,11 @@ function captureElementContext(
   const framework = detectFramework();
   const projectRoot = window.location.origin;
 
+  // P7: find the most likely originating <script> for the element.
+  // Vite dev serves each component as <script type="module" src="/src/...">
+  // and injects _jsxFileName in JSX calls.
+  const scriptUrl = findOriginatingScript();
+
   return {
     element: {
       html,
@@ -104,9 +109,31 @@ function captureElementContext(
       url: window.location.href,
       framework,
       projectRoot,
+      scriptUrl,
     },
   };
 }
+
+// P7: try to determine which <script> produced the clicked element.
+// Prefer a <script type="module"> with /src/ in its src (Vite dev source scripts).
+function findOriginatingScript(): string | undefined {
+  const scripts = Array.from(document.scripts);
+  // Prefer a script whose src contains /src/ (Vite dev source scripts)
+  for (const s of scripts) {
+    if (s.src && s.src.includes('/src/') && s.type?.includes('module')) {
+      return s.src;
+    }
+  }
+  // Fallback: any module script
+  for (const s of scripts) {
+    if (s.src && s.type?.includes('module')) {
+      return s.src;
+    }
+  }
+  return undefined;
+}
+
+// Exposed for direct/unit-test invocation.
 
 function detectFramework(): 'react' | 'vue' | 'svelte' | 'unknown' {
   const scripts = Array.from(document.scripts);

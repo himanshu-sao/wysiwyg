@@ -28,7 +28,11 @@ You are an expert frontend developer. The user wants to modify a UI element.
 \`\`\`${context.framework || 'jsx'}
 ${context.sourceCode || ''}
 \`\`\`
-
+${
+  context.sourceCode
+    ? ''
+    : '\n> NOTE: The source file could not be located via sourcemap, so no source code is provided. Infer the most likely target file path from the element context (framework + classes), produce a self-contained diff against a reasonable path, and keep changes minimal and valid.\n'
+}
 ## User Instruction
 "${instruction}"
 
