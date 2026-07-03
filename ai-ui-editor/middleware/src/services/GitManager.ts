@@ -37,18 +37,18 @@ export async function writeFileWithGit(
 export async function undoLastCommit(projectRoot: string): Promise<{ success: boolean; hash?: string; error?: string }> {
   try {
     const git = simpleGit({ baseDir: projectRoot });
-    
+
     // Get the last commit
     const log = await git.log({ maxCount: 1 });
     const lastHash = log.latest?.hash;
-    
+
     if (!lastHash) {
       return { success: false, error: 'No commits to undo' };
     }
 
-    // Revert the last commit
-    await git.revert([{ hash: lastHash.hash }]);
-    
+    // Revert the last commit - pass the hash string directly
+    await git.revert(lastHash);
+
     return { success: true, hash: lastHash };
   } catch (error: any) {
     console.error('Failed to undo last commit:', error);

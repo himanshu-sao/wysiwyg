@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { exec } from 'child_process';
 import util from 'util';
-import { LintError } from '../../shared/types';
+import { LintError } from '../shared/types';
 
 const execAsync = util.promisify(exec);
 

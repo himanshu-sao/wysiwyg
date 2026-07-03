@@ -2,6 +2,58 @@
 
 A Chrome extension that enables developers to right-click any UI element, describe a visual/CSS change in natural language, and have AI-generated options applied to their source code with instant live reload.
 
+## AI Integration
+
+The middleware uses **NVIDIA NIM API** to generate AI-powered edit options:
+
+- **API**: NVIDIA NIM (OpenAI-compatible)
+- **Base URL**: `https://integrate.api.nvidia.com/v1`
+- **Model**: Claude Sonnet 4 (`anthropic/claude-sonnet-4-20250514`) by default
+- **Response Validation**: Zod schema validation ensures structured JSON output
+- **Retry Logic**: Automatic retries with exponential backoff on rate limits (429) or server errors (503, 408)
+- **Fallback**: Mock responses when API key is not configured (for testing)
+
+### Available Models
+
+NVIDIA NIM provides access to multiple models:
+
+| Model | Description |
+|-------|-------------|
+| `anthropic/claude-sonnet-4-20250514` | Best for code generation (default) |
+| `anthropic/claude-3.5-sonnet` | Claude 3.5 Sonnet |
+| `meta/llama-3.1-405b-instruct` | Meta Llama 3.1 405B |
+| `mistralai/mistral-large-2-instruct` | Mistral Large 2 |
+| `google/gemma-2-9b-it` | Google Gemma 2 |
+
+Change the model via `NVIDIA_MODEL` environment variable.
+
+### AI Response Format
+
+The AI returns structured JSON with:
+
+```json
+{
+  "options": [
+    {
+      "id": "opt1",
+      "description": "Change background color to blue",
+      "diff": "@@ -1,7 +1,7 @@\n- className=\"bg-white\"\n+ className=\"bg-blue-100\"",
+      "previewHtml": "<div class=\"bg-blue-100\">...</div>",
+      "file": "src/components/Card.tsx",
+      "type": "jsx"
+    }
+  ],
+  "followUpQuestions": ["Did you mean to also add hover state?"]
+}
+```
+
+### Error Handling
+
+- **Rate Limits**: Retries up to 3 times with 1s, 2s, 3s delays
+- **Parse Failures**: Falls back to mock responses
+- **API Errors**: Returns user-friendly error messages to the extension
+- **Invalid Key**: Logs error and falls back to mock responses
+
 ## Features
 
 - **Right-click to edit**: Context menu on any DOM element
@@ -70,6 +122,7 @@ ai-ui-editor/
 - Node.js 20+
 - Chrome/Chromium browser
 - Git
+- NVIDIA NIM API Key (get from https://build.nvidia.com/ - free tier available)
 
 ### Install Dependencies
 
@@ -90,6 +143,26 @@ npm install
 cd sample-project
 npm install
 ```
+
+### Configure Environment Variables
+
+Create a `.env` file in the `middleware` directory:
+
+```bash
+cd middleware
+cp .env.example .env
+```
+
+Edit `.env` and add your NVIDIA NIM API key:
+
+```
+NVIDIA_API_KEY=nvapi-your_api_key_here
+NVIDIA_MODEL=anthropic/claude-sonnet-4-20250514
+```
+
+> **Note**: Without an API key, the system will fall back to mock responses for testing.
+
+**Get API Key**: Visit https://build.nvidia.com/ to get your free API key. NVIDIA NIM provides generous free tier limits for development.
 
 ### Start Development Servers
 

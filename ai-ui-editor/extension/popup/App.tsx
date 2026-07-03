@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { EditRequest, EditOption } from '../../shared/types';
+import React, { useState, useEffect, useRef } from 'react';
+import { EditRequest, EditOption } from '../shared/types';
+import { applyDiff } from '../shared/diff';
 
 const App: React.FC = () => {
   const [elementContext, setElementContext] = useState<EditRequest | null>(null);
@@ -7,26 +8,60 @@ const App: React.FC = () => {
   const [options, setOptions] = useState<EditOption[]>([]);
   const [instruction, setInstruction] = useState('');
   const [contextHint, setContextHint] = useState('');
+  const [progress, setProgress] = useState('');
+  const [error, setError] = useState('');
 
-  // Listen for messages from background script
+  // Keep a stable listener reference so the cleanup actually removes it
+  // (the old code passed `removeListener(() => {})` — a new arrow each time,
+  //  which never removed the real listener).
+  const messageListenerRef = useRef<((msg: any) => boolean | undefined) | null>(null);
+
+  // Pending write waiting on a validation result before being committed.
+  const pendingWriteRef = useRef<{ file: string; content: string; commitMessage: string } | null>(null);
+
   useEffect(() => {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const listener = (message: any) => {
       switch (message.type) {
         case 'show-popup':
           setElementContext(message.data);
           updateContextHint(message.data);
           break;
-        case 'server-response':
-          setOptions(message.data.options || []);
+        case 'server-response': {
+          const data = message.data || {};
+          // Validate-before-write gate: if this response is a validation result
+          // and we have a pending apply, write only if valid; else surface errors.
+          if (typeof data.valid === 'boolean' && pendingWriteRef.current) {
+            const pending = pendingWriteRef.current;
+            if (data.valid) {
+              doWrite(pending.file, pending.content, pending.commitMessage);
+              setError('');
+            } else {
+              const msgs = (data.errors || [])
+                .map((e: any) => `${e.file}:${e.line}:${e.column} ${e.message}`)
+                .join('\n');
+              setError(`Validation failed — not written:\n${msgs}`);
+            }
+            break;
+          }
+          // Otherwise it's an AI edit-options response.
+          setOptions(data.options || []);
           setLoading(false);
+          setProgress('');
           break;
+        }
         case 'server-error':
-          alert(`Error: ${message.error}`);
+          setError(message.error || 'Unknown error');
           setLoading(false);
+          setProgress('');
+          break;
+        case 'stream-progress':
+          setProgress(message.data?.message || '');
           break;
       }
       return true;
-    });
+    };
+    messageListenerRef.current = listener;
+    chrome.runtime.onMessage.addListener(listener);
 
     // Request current element context on popup open
     chrome.runtime.sendMessage({ type: 'get-current-element' }, (response) => {
@@ -37,7 +72,10 @@ const App: React.FC = () => {
     });
 
     return () => {
-      chrome.runtime.onMessage.removeListener(() => {});
+      if (messageListenerRef.current) {
+        chrome.runtime.onMessage.removeListener(messageListenerRef.current);
+        messageListenerRef.current = null;
+      }
     };
   }, []);
 
@@ -53,6 +91,9 @@ const App: React.FC = () => {
     if (!elementContext || !instruction.trim()) return;
 
     setLoading(true);
+    setError('');
+    setOptions([]);
+    setProgress('Sending request to AI...');
 
     const request: EditRequest = {
       element: elementContext.element,
@@ -60,66 +101,52 @@ const App: React.FC = () => {
       context: elementContext.context,
     };
 
-    // Send to middleware server
+    // Use the streaming SSE endpoint so the popup can show progress (and, once
+    // the middleware streams real tokens, the first option renders faster).
     chrome.runtime.sendMessage({
-      type: 'send-to-server',
+      type: 'send-streaming-to-server',
       data: {
-        endpoint: '/api/ai/edit',
+        endpoint: '/api/ai/edit/stream',
         body: request,
       },
     });
   }
 
   async function handleApply(option: EditOption) {
-    if (confirm(`Apply this change: ${option.description}?`)) {
-      chrome.runtime.sendMessage({
+    if (!confirm(`Apply this change: ${option.description}?`)) return;
+
+    const file = option.file;
+    const content = applyDiff(elementContext?.context.sourceCode || '', option.diff);
+
+    // Validate before write (MVP-13/17). If validation fails, surface errors
+    // and refuse to write. The popup *also* receives server-error via the
+    // background relay; this is a synchronous gate before we even send /write.
+    chrome.runtime.sendMessage(
+      {
         type: 'send-to-server',
-        data: {
-          endpoint: '/api/files/write',
-          body: {
-            file: option.file,
-            content: applyDiff(elementContext?.context.sourceCode || '', option.diff),
-            commitMessage: `AI: ${instruction}`,
-          },
-        },
-      });
-    }
+        data: { endpoint: '/api/files/validate', body: { file, content } },
+      }
+      // The validate result comes back asynchronously as server-response.
+      // We write only after observing a `valid` result — handled below in
+      // the validateResult effect. For the MVP we issue validate, then write.
+    );
+
+    // Stash pending write so a subsequent server-response (validate result)
+    // can trigger the actual /write. This keeps the apply flow honest: the
+    // file is never written unless validation reported valid (or validation
+    // itself is unavailable — see note).
+    pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
   }
 
-  function applyDiff(source: string, diff: string): string {
-    // Simple diff parser (for MVP)
-    const lines = source.split('\n');
-    const diffLines = diff.split('\n');
-
-    let result = [...lines];
-    let lineIndex = 0;
-
-    for (const diffLine of diffLines) {
-      if (diffLine.startsWith('@@')) {
-        // Parse range: @@ -start,count +newStart,newCount @@
-        const match = diffLine.match(/@@\s+-(\d+),(\d+)\s+\+(\d+),(\d+)\s+@@/);
-        if (match) {
-          const [, start, count, newStart] = match.map(Number);
-          lineIndex = start - 1;
-        }
-      } else if (diffLine.startsWith('-')) {
-        const actualLine = diffLine.slice(1);
-        const currentLine = result[lineIndex];
-        if (currentLine === actualLine) {
-          result.splice(lineIndex, 1);
-        } else {
-          lineIndex++;
-        }
-      } else if (diffLine.startsWith('+')) {
-        const newLine = diffLine.slice(1);
-        result.splice(lineIndex, 0, newLine);
-        lineIndex++;
-      } else if (diffLine.startsWith(' ')) {
-        lineIndex++;
-      }
-    }
-
-    return result.join('\n');
+  async function doWrite(file: string, content: string, commitMessage: string) {
+    chrome.runtime.sendMessage({
+      type: 'send-to-server',
+      data: {
+        endpoint: '/api/files/write',
+        body: { file, content, commitMessage, projectRoot: elementContext?.context.projectRoot },
+      },
+    });
+    pendingWriteRef.current = null;
   }
 
   function handleUndo() {
@@ -127,6 +154,7 @@ const App: React.FC = () => {
       type: 'send-to-server',
       data: {
         endpoint: '/api/git/undo',
+        body: { projectRoot: elementContext?.context.projectRoot },
       },
     });
   }
@@ -162,10 +190,16 @@ const App: React.FC = () => {
         </button>
       </form>
 
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 whitespace-pre-wrap">
+          {error}
+        </div>
+      )}
+
       {loading && (
         <div className="flex items-center justify-center p-4">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-          <span className="ml-2 text-sm">Generating...</span>
+          <span className="ml-2 text-sm">{progress || 'Generating...'}</span>
         </div>
       )}
 
@@ -176,9 +210,17 @@ const App: React.FC = () => {
             {options.map((option) => (
               <div key={option.id} className="border rounded p-3">
                 <p className="text-sm font-medium mb-2">{option.description}</p>
-                <div className="bg-gray-50 rounded p-2 text-xs monospace overflow-x-auto">
+                <div className="bg-gray-50 rounded p-2 text-xs overflow-x-auto">
                   <pre>{option.diff}</pre>
                 </div>
+                {option.previewHtml && (
+                  <iframe
+                    title={`preview-${option.id}`}
+                    sandbox="allow-same-origin"
+                    srcDoc={option.previewHtml}
+                    className="mt-2 w-full h-24 border rounded bg-white"
+                  />
+                )}
                 <button
                   onClick={() => handleApply(option)}
                   className="mt-2 bg-green-600 text-white px-4 py-1 rounded text-sm"

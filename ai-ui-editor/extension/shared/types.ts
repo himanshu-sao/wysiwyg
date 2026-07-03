@@ -1,3 +1,11 @@
+// Shared types for the Chrome extension.
+//
+// NOTE: This is a deliberate copy of the canonical types in
+// ../../middleware/src/shared/types.ts. The extension cannot import across
+// the package boundary (it lives in extension/, the middleware in
+// middleware/), and a shared workspace package wasn't set up. Keep these two
+// files in sync when you change message/type contracts.
+
 // Element context captured from the DOM
 export interface ElementContext {
   html: string;
@@ -71,18 +79,26 @@ export interface WriteRequest {
   file: string;
   content: string;
   commitMessage: string;
+  projectRoot?: string; // Optional: scope git ops to a specific project
 }
 
-// Response from /api/files/write
-export interface WriteResponse {
-  success: boolean;
-  commitHash?: string;
-  error?: string;
-}
-
-// Message types for Chrome extension messaging
+// Message types for Chrome extension messaging.
+// Synced with background.ts / popup / content-script — see POSTMVP_TODO.md P9.
 export interface ExtensionMessage {
-  type: 'element-selected' | 'show-popup' | 'hide-popup' | 'apply-diff' | 'undo';
+  type:
+    | 'element-selected'
+    | 'show-popup'
+    | 'hide-popup'
+    | 'get-current-element'
+    | 'send-to-server'
+    | 'send-streaming-to-server'
+    | 'server-response'
+    | 'server-error'
+    | 'stream-progress'
+    | 'ws-message'
+    | 'ws-send'
+    | 'apply-diff'
+    | 'undo';
   data?: any;
   error?: string;
 }

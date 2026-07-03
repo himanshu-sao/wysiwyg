@@ -1,4 +1,4 @@
-import { ElementContext, EditContext } from '../../shared/types';
+import { ElementContext, EditContext } from '../shared/types';
 
 export function getEditPrompt(
   element: ElementContext,
