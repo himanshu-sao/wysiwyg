@@ -58,6 +58,11 @@ export interface EditResponse {
   // P7 / MVP-18: set when sourcemap resolution could NOT locate the source,
   // so the popup should prompt the user to pick a file manually.
   needsFileSelection?: boolean;
+  // P3/P7: when sourcemap resolution succeeds, include the resolved source code
+  // so the popup can apply diffs correctly. If absent, popup should fetch via
+  // /api/files/read using option.file before applying.
+  resolvedSourceCode?: string;
+  resolvedFilePath?: string;
 }
 
 // Request to validate a modified file
@@ -91,12 +96,12 @@ export interface WriteRequest {
 }
 
 // Message types for Chrome extension messaging.
-// Synced with background.ts / popup / content-script — see POSTMVP_TODO.md P9.
+// Synced with actual usage in background.ts / popup / content-script (P9).
+// Incoming (popup → background): get-current-element, send-to-server, send-streaming-to-server, ws-send
+// Outgoing (background → popup): show-popup, server-response, server-error, stream-progress, ws-message, capture-element
 export interface ExtensionMessage {
   type:
-    | 'element-selected'
     | 'show-popup'
-    | 'hide-popup'
     | 'get-current-element'
     | 'send-to-server'
     | 'send-streaming-to-server'
@@ -105,8 +110,7 @@ export interface ExtensionMessage {
     | 'stream-progress'
     | 'ws-message'
     | 'ws-send'
-    | 'apply-diff'
-    | 'undo';
+    | 'capture-element';
   data?: any;
   error?: string;
 }

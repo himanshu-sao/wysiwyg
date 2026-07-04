@@ -11,12 +11,14 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
 
       // P7: resolve the element's source via sourcemap before calling the AI,
       // so the AI prompt includes the real sourceFile/sourceLine/sourceCode.
-      const { context: resolvedContext, needsFileSelection } = await resolveContextSource(element, context);
+      const { context: resolvedContext, needsFileSelection, resolvedFilePath, resolvedSourceCode } = await resolveContextSource(element, context);
 
       const options = await generateEditOptions(element, instruction, resolvedContext);
       const response: EditResponse = {
         options,
         needsFileSelection,
+        resolvedFilePath,
+        resolvedSourceCode,
       };
       return reply.send(response);
     } catch (error: any) {
@@ -50,12 +52,14 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
         reply.raw.write(`data: ${event}\n\n`);
       };
 
-      // Send final result (EditResponse-shaped: options + needsFileSelection)
-      const sendResult = (payload: { options: any[]; needsFileSelection?: boolean }) => {
+      // Send final result (EditResponse-shaped: options + needsFileSelection + resolved source)
+      const sendResult = (payload: { options: any[]; needsFileSelection?: boolean; resolvedFilePath?: string; resolvedSourceCode?: string }) => {
         const event = JSON.stringify({
           type: 'result',
           options: payload.options,
           needsFileSelection: payload.needsFileSelection,
+          resolvedFilePath: payload.resolvedFilePath,
+          resolvedSourceCode: payload.resolvedSourceCode,
           timestamp: Date.now(),
         });
         reply.raw.write(`data: ${event}\n\n`);
@@ -80,7 +84,7 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
 
       try {
         // P7: resolve source first (may set needsFileSelection on the result).
-        const { context: resolvedContext, needsFileSelection } = await resolveContextSource(element, context);
+        const { context: resolvedContext, needsFileSelection, resolvedFilePath, resolvedSourceCode } = await resolveContextSource(element, context);
         if (needsFileSelection) {
           sendProgress('sourcemap', 'Could not locate source — manual file selection available');
         }
@@ -92,8 +96,8 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
           (stage, message, data) => sendProgress(stage, message, data)
         );
         // sendResult carries the EditResponse-shaped payload; include needsFileSelection
-        // so the popup can show the manual file picker.
-        sendResult({ options, needsFileSelection });
+        // and resolved source info so the popup can apply diffs correctly (P3).
+        sendResult({ options, needsFileSelection, resolvedFilePath, resolvedSourceCode });
       } catch (error: any) {
         console.error('Streaming error:', error);
         sendError(error.message || 'Failed to generate edit options');
@@ -110,15 +114,17 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
 
 /**
  * P7: enrich the edit context with the element's resolved source file/line/code
- * via sourcemap. Returns the (possibly updated) context and a `needsFileSelection`
- * flag — true ONLY when resolution was attempted (scriptUrl present) but failed,
- * so the popup can offer MVP-18 manual file selection. When nothing was sent,
- * we leave the context untouched (preserves existing mock/test behavior).
+ * via sourcemap. Returns the (possibly updated) context, a `needsFileSelection`
+ * flag, and the resolved source details for the popup.
+ * - needsFileSelection: true ONLY when resolution was attempted (scriptUrl present)
+ *   but failed, so the popup can offer MVP-18 manual file selection.
+ * - resolvedFilePath/resolvedSourceCode: populated when resolution succeeds, so
+ *   the popup can apply diffs correctly (P3 fix).
  */
 async function resolveContextSource(
   element: ElementContext,
   context: EditContext
-): Promise<{ context: EditContext; needsFileSelection: boolean }> {
+): Promise<{ context: EditContext; needsFileSelection: boolean; resolvedFilePath?: string; resolvedSourceCode?: string }> {
   const attempted = !!context.scriptUrl && context.scriptUrl.trim().length > 0;
   if (!attempted) {
     return { context, needsFileSelection: false };
@@ -142,6 +148,8 @@ async function resolveContextSource(
   return {
     context: merged,
     needsFileSelection: !merged.sourceFile,
+    resolvedFilePath: resolved.sourceFile ?? undefined,
+    resolvedSourceCode: resolved.sourceCode ?? undefined,
   };
 }
 

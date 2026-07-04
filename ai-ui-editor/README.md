@@ -8,7 +8,7 @@ The middleware uses **NVIDIA NIM API** to generate AI-powered edit options:
 
 - **API**: NVIDIA NIM (OpenAI-compatible)
 - **Base URL**: `https://integrate.api.nvidia.com/v1`
-- **Model**: Claude Sonnet 4 (`anthropic/claude-sonnet-4-20250514`) by default
+- **Model**: `meta/llama-3.1-70b-instruct` by default (change via `NVIDIA_MODEL`)
 - **Response Validation**: Zod schema validation ensures structured JSON output
 - **Retry Logic**: Automatic retries with exponential backoff on rate limits (429) or server errors (503, 408)
 - **Fallback**: Mock responses when API key is not configured (for testing)
@@ -19,9 +19,10 @@ NVIDIA NIM provides access to multiple models:
 
 | Model | Description |
 |-------|-------------|
-| `anthropic/claude-sonnet-4-20250514` | Best for code generation (default) |
+| `meta/llama-3.1-70b-instruct` | Default model (balanced performance/cost) |
+| `meta/llama-3.1-405b-instruct` | Meta Llama 3.1 405B (highest quality) |
+| `anthropic/claude-sonnet-4-20250514` | Claude Sonnet 4 |
 | `anthropic/claude-3.5-sonnet` | Claude 3.5 Sonnet |
-| `meta/llama-3.1-405b-instruct` | Meta Llama 3.1 405B |
 | `mistralai/mistral-large-2-instruct` | Mistral Large 2 |
 | `google/gemma-2-9b-it` | Google Gemma 2 |
 
@@ -157,7 +158,7 @@ Edit `.env` and add your NVIDIA NIM API key:
 
 ```
 NVIDIA_API_KEY=nvapi-your_api_key_here
-NVIDIA_MODEL=anthropic/claude-sonnet-4-20250514
+NVIDIA_MODEL=meta/llama-3.1-70b-instruct
 ```
 
 > **Note**: Without an API key, the system will fall back to mock responses for testing.
@@ -286,8 +287,7 @@ Revert the last git commit.
 - **CSS/Visual changes only**: No functional code modifications
 - **Single-file changes**: Each edit modifies one file
 - **React focus**: Best support for React + Vite projects
-- **Mock AI**: Currently uses mock responses; Opencode SDK integration pending
-- **Manual extension reload**: Extension requires rebuild after code changes
+- **Manual extension rebuild**: Extension requires `npm run build` after code changes
 
 ## Troubleshooting
 

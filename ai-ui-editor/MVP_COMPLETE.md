@@ -1,7 +1,7 @@
 # AI UI Editor - MVP Complete ✅
 
-**Date:** 2026-07-02  
-**Status:** All 20 tasks completed
+**Date:** 2026-07-04  
+**Status:** All 19 MVP tasks completed + P3/P8/P9 post-MVP items implemented
 
 ---
 
@@ -12,7 +12,7 @@
 - ✅ Right-click context menu ("Edit with AI")
 - ✅ Element context capture (HTML, styles, hierarchy, event listeners)
 - ✅ Framework detection (React/Vue/Svelte)
-- ✅ Sourcemap resolution (placeholder for full implementation)
+- ✅ Real sourcemap resolution (commit 8dbb195 — Vite/Webpack `.map` parsing)
 - ✅ Background service worker with message handling
 - ✅ Popup UI with React + Tailwind CSS
 - ✅ Floating input panel for natural language instructions
@@ -29,7 +29,7 @@
 - ✅ POST /api/files/validate - ESLint/TypeScript validation
 - ✅ POST /api/files/write - Write changes and auto-commit
 - ✅ POST /api/git/undo - Revert last commit
-- ✅ Mock AI implementation (generates sample diffs)
+- ✅ NVIDIA NIM integration (real AI, not mock — retry/backoff, Zod validation)
 - ✅ Framework detector service
 - ✅ Diff validator service
 - ✅ Git manager service

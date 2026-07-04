@@ -50,6 +50,11 @@ export interface EditResponse {
   // P7 / MVP-18: set when sourcemap resolution could NOT locate the source,
   // so the popup should prompt the user to pick a file manually.
   needsFileSelection?: boolean;
+  // P3/P7: when sourcemap resolution succeeds, include the resolved source code
+  // so the popup can apply diffs correctly. If absent, popup should fetch via
+  // /api/files/read using option.file before applying.
+  resolvedSourceCode?: string;
+  resolvedFilePath?: string;
 }
 
 // Request to validate a modified file

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { EditRequest, EditOption } from '../shared/types';
 import { applyDiff } from '../shared/diff';
+import { resolveApplyBase } from '../shared/apply';
+import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
 
 const App: React.FC = () => {
   const [elementContext, setElementContext] = useState<EditRequest | null>(null);
@@ -9,14 +11,24 @@ const App: React.FC = () => {
   const [instruction, setInstruction] = useState('');
   const [contextHint, setContextHint] = useState('');
   const [progress, setProgress] = useState('');
+  // P8: live token buffer. As the middleware streams real NIM deltas, we
+  // accumulate them here so the user sees the JSON building up rather than a
+  // single staged status line. Reset whenever a non-token stage arrives.
+  const [tokenBuffer, setTokenBuffer] = useState('');
   const [error, setError] = useState('');
   // P7 / MVP-18: when sourcemap resolution fails the middleware asks us to let
-  // the user pick a file manually. The picked path + its content override the
-  // option's file and the diff base (also fixes P3 — applyDiff had '' base).
+  // the user pick a file manually. The picked path + content override the diff
+  // base (highest precedence) — distinct from the auto-resolved source so a
+  // manual pick survives a regenerate and the two paths don't conflate.
   const [needsFileSelection, setNeedsFileSelection] = useState(false);
   const [pickedFile, setPickedFile] = useState('');
   const [pickedFileContent, setPickedFileContent] = useState<string | null>(null);
   const [pickingFile, setPickingFile] = useState(false);
+  // P3: source that the middleware resolved via sourcemap. Lower precedence
+  // than a manual pick; cleared on every new generation so it can't leak into
+  // the next element's apply.
+  const [resolvedFilePath, setResolvedFilePath] = useState<string | undefined>(undefined);
+  const [resolvedSourceCode, setResolvedSourceCode] = useState<string | undefined>(undefined);
 
   // Keep a stable listener reference so the cleanup actually removes it
   // (the old code passed `removeListener(() => {})` — a new arrow each time,
@@ -53,18 +65,42 @@ const App: React.FC = () => {
           // Otherwise it's an AI edit-options response.
           setOptions(data.options || []);
           setNeedsFileSelection(!!data.needsFileSelection);
+          // P3: keep the resolved source separate from the manual pick so the
+          // two never conflate — a manual pick (above) must survive a regenerate.
+          setResolvedFilePath(data.resolvedFilePath);
+          setResolvedSourceCode(data.resolvedSourceCode);
           setLoading(false);
           setProgress('');
+          setTokenBuffer('');
           break;
         }
         case 'server-error':
           setError(message.error || 'Unknown error');
           setLoading(false);
           setProgress('');
+          setTokenBuffer('');
           break;
-        case 'stream-progress':
-          setProgress(message.data?.message || '');
+        case 'stream-progress': {
+          const ev = message.data || {};
+          // P8: real streaming. 'token' stages carry the raw NIM delta in
+          // ev.message and the accumulated string in ev.data.sofar; append so
+          // the user sees the JSON stream in. Any other stage is a status
+          // transition — show it and clear the token buffer.
+          if (ev.stage === 'token') {
+            setProgress('Streaming AI response…');
+            // Prefer the server-side accumulated `sofar` when present (robust
+            // to coalesced/dropped events), else append the delta locally.
+            if (typeof ev.data?.sofar === 'string') {
+              setTokenBuffer(ev.data.sofar);
+            } else {
+              setTokenBuffer((prev) => prev + (ev.message || ''));
+            }
+          } else {
+            setProgress(ev.message || '');
+            setTokenBuffer('');
+          }
           break;
+        }
       }
       return true;
     };
@@ -102,7 +138,13 @@ const App: React.FC = () => {
     setError('');
     setOptions([]);
     setNeedsFileSelection(false);
+    // A manual pick belongs to the previous element/instruction; clear it so a
+    // fresh generation can't silently reuse an outdated file as the apply base.
+    setPickedFile('');
     setPickedFileContent(null);
+    setResolvedFilePath(undefined);
+    setResolvedSourceCode(undefined);
+    setTokenBuffer('');
     setProgress('Sending request to AI...');
 
     const request: EditRequest = {
@@ -125,18 +167,21 @@ const App: React.FC = () => {
   async function handleApply(option: EditOption) {
     if (!confirm(`Apply this change: ${option.description}?`)) return;
 
-    // P7 / P3: prefer the user's manually-picked file+content when present
-    // (sourcemap failed); otherwise use the resolved sourceCode from the
-    // middleware and the option's file. This makes applyDiff produce a full,
-    // correct file instead of just the added diff lines.
-    const file = pickedFile && pickedFileContent !== null ? pickedFile : option.file;
-    const baseSource = pickedFile && pickedFileContent !== null
-      ? pickedFileContent
-      : elementContext?.context.sourceCode || '';
+    // P7 / P3: resolve the diff base once, in one place, via the shared helper
+    // (mirrors the applyDiff extraction — keep apply-flow policy testable).
+    // Precedence: manual pick > resolved source > context.sourceCode. If none
+    // yields a non-empty base, refuse to write a half-applied diff.
+    const { file, baseSource, needsManualPick } = resolveApplyBase({
+      pickedFile,
+      pickedFileContent,
+      resolvedFilePath: resolvedFilePath ?? undefined,
+      resolvedSourceCode: resolvedSourceCode ?? undefined,
+      contextSourceCode: elementContext?.context.sourceCode,
+      optionFile: option.file,
+    });
     const content = applyDiff(baseSource, option.diff);
 
-    if (!baseSource.trim()) {
-      // Still no source to diff against — refuse rather than write garbage.
+    if (needsManualPick) {
       setError('No source content to apply the diff against. Pick a file manually below.');
       return;
     }
@@ -244,9 +289,16 @@ const App: React.FC = () => {
       )}
 
       {loading && (
-        <div className="flex items-center justify-center p-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-          <span className="ml-2 text-sm">{progress || 'Generating...'}</span>
+        <div className="p-4">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+            <span className="ml-2 text-sm">{progress || 'Generating...'}</span>
+          </div>
+          {tokenBuffer && (
+            <pre className="mt-2 max-h-40 overflow-auto text-[10px] leading-tight text-gray-500 bg-gray-50 rounded p-2 whitespace-pre-wrap break-all">
+              {tokenBuffer}
+            </pre>
+          )}
         </div>
       )}
 
@@ -290,8 +342,8 @@ const App: React.FC = () => {
                 {option.previewHtml && (
                   <iframe
                     title={`preview-${option.id}`}
-                    sandbox="allow-same-origin"
-                    srcDoc={option.previewHtml}
+                    sandbox={getPreviewSandbox()}
+                    srcDoc={sanitizeHtml(option.previewHtml)}
                     className="mt-2 w-full h-24 border rounded bg-white"
                   />
                 )}

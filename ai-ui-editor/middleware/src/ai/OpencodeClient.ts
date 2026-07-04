@@ -170,10 +170,15 @@ async function callNvidiaNimStream(
     // Progress: Starting API call
     onProgress('prompt', 'Sending request to AI...', { model: DEFAULT_MODEL });
 
-    const completion = await nvidiaNim.chat.completions.create({
+    // Real token streaming: ask the SDK for a stream and forward each delta
+    // as a 'token' progress event so the popup can render the JSON as it
+    // arrives. We still validate the full JSON at the end (json_object mode
+    // means the concatenated deltas form valid JSON once the stream ends).
+    const stream = await nvidiaNim.chat.completions.create({
       model: DEFAULT_MODEL,
       max_tokens: 4096,
       temperature: 0.7,
+      stream: true,
       messages: [
         {
           role: 'system',
@@ -187,11 +192,22 @@ async function callNvidiaNimStream(
       response_format: { type: 'json_object' },
     });
 
-    // Progress: Got response, now parsing
-    onProgress('parse', 'Processing AI response...', { tokens: completion.usage?.total_tokens || 0 });
+    let textContent = '';
+    let tokenCount = 0;
+    for await (const chunk of stream) {
+      const delta: string | null | undefined = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        textContent += delta;
+        tokenCount++;
+        // Forward the raw delta so the popup can append it to the live buffer.
+        // Carrying `sofar` lets the UI show the accumulated string if it wants
+        // to re-render from a known point (useful if events are coalesced).
+        onProgress('token', delta, { sofar: textContent });
+      }
+    }
 
-    // Extract text content from response
-    const textContent = completion.choices[0]?.message?.content;
+    // Progress: Got full response, now parsing
+    onProgress('parse', 'Processing AI response...', { tokens: tokenCount });
 
     if (!textContent || !textContent.trim()) {
       throw new Error('Empty response from NVIDIA NIM API');
