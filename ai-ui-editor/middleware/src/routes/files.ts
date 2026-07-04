@@ -47,7 +47,7 @@ const filesRoutes: FastifyPluginAsync = async (app) => {
 
       const root = resolveProjectRoot(projectRoot, DEFAULT_PROJECT_ROOT);
       const absPath = safeFilePath(root, file);
-      const errors = await validateDiff(absPath, content);
+      const errors = await validateDiff(absPath, content, root);
       const response: ValidateResponse = {
         valid: errors.length === 0,
         errors,
