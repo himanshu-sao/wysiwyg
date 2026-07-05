@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
+import { WebSocket } from 'ws';
 
 const wsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/connect', { websocket: true }, (connection, request) => {
@@ -9,7 +10,7 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
         const data = JSON.parse(message);
         console.log('WebSocket message:', data);
         // Broadcast to all connected clients (for multi-extension support)
-        app.websocketServer?.clients.forEach((client) => {
+        app.websocketServer?.clients.forEach((client: WebSocket) => {
           if (client !== connection.socket) {
             client.send(JSON.stringify({ type: 'broadcast', data }));
           }
@@ -23,7 +24,7 @@ const wsRoutes: FastifyPluginAsync = async (app) => {
       console.log('WebSocket client disconnected');
     });
 
-    connection.socket.on('error', (error) => {
+    connection.socket.on('error', (error: Error) => {
       console.error('WebSocket error:', error);
     });
   });

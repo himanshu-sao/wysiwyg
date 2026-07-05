@@ -1,3 +1,11 @@
+// Shared types for the Chrome extension.
+//
+// NOTE: This is a deliberate copy of the canonical types in
+// ../../middleware/src/shared/types.ts. The extension cannot import across
+// the package boundary (it lives in extension/, the middleware in
+// middleware/), and a shared workspace package wasn't set up. Keep these two
+// files in sync when you change message/type contracts.
+
 // Element context captured from the DOM
 export interface ElementContext {
   html: string;
@@ -16,9 +24,9 @@ export interface EditContext {
   sourceFile?: string; // If resolved via sourcemap
   sourceLine?: number;
   sourceCode?: string; // Full file content
-  // P7: sourcemap-resolution inputs sent by the content script. Middleware
-  // resolves these to sourceFile/sourceLine/sourceCode before calling the AI.
-  scriptUrl?: string; // originating <script src>, e.g. "/src/components/Card.tsx"
+  // P7: sourcemap-resolution inputs sent to the middleware. Set the originating
+  // <script> src here; the middleware resolves sourceFile/sourceLine/sourceCode.
+  scriptUrl?: string; // e.g. "/src/components/Card.tsx"
   generatedLine?: number; // 1-based line of the element in the served script
   generatedColumn?: number; // 1-based column in the served script
   packageJson?: any;
@@ -84,32 +92,25 @@ export interface WriteRequest {
   file: string;
   content: string;
   commitMessage: string;
+  projectRoot?: string; // Optional: scope git ops to a specific project
 }
 
-// Response from /api/files/write
-export interface WriteResponse {
-  success: boolean;
-  commitHash?: string;
-  error?: string;
-}
-
-// P7 / MVP-18: Request to read a file (so the popup can offer manual
-// file-selection when sourcemap resolution fails).
-export interface ReadRequest {
-  file: string;
-  projectRoot?: string;
-}
-
-// Response from /api/files/read
-export interface ReadResponse {
-  content: string;
-  file: string;
-  error?: string;
-}
-
-// Message types for Chrome extension messaging
+// Message types for Chrome extension messaging.
+// Synced with actual usage in background.ts / popup / content-script (P9).
+// Incoming (popup → background): get-current-element, send-to-server, send-streaming-to-server, ws-send
+// Outgoing (background → popup): show-popup, server-response, server-error, stream-progress, ws-message, capture-element
 export interface ExtensionMessage {
-  type: 'element-selected' | 'show-popup' | 'hide-popup' | 'apply-diff' | 'undo';
+  type:
+    | 'show-popup'
+    | 'get-current-element'
+    | 'send-to-server'
+    | 'send-streaming-to-server'
+    | 'server-response'
+    | 'server-error'
+    | 'stream-progress'
+    | 'ws-message'
+    | 'ws-send'
+    | 'capture-element';
   data?: any;
   error?: string;
 }

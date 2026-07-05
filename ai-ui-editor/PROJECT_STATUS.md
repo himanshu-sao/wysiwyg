@@ -2,14 +2,14 @@
 
 ## MVP Development Complete ✅
 
-All 20 tasks from MVP_REQUIREMENTS.md have been implemented:
+All 19 MVP tasks (MVP-01…MVP-19) have been implemented, plus P3 (apply flow), P8 (token streaming), and P9 (XSS sanitization) from the post-MVP backlog.
 
 ### Summary
 - **Chrome Extension**: Fully functional with right-click context menu, element capture, and popup UI
-- **Middleware Server**: Fastify-based server with AI endpoints, file operations, and Git integration
+- **Middleware Server**: Fastify-based server with NVIDIA NIM AI integration, file operations, and Git integration
 - **Sample Project**: React + Vite + Tailwind test app with multiple components
 - **Documentation**: README.md with setup instructions and API reference
-- **Tests**: Basic API test suite with vitest
+- **Tests**: 37 middleware tests + 30 extension tests passing
 
 ### Servers Running
 - Middleware: http://localhost:3000 (health check passing)
@@ -23,6 +23,7 @@ All 20 tasks from MVP_REQUIREMENTS.md have been implemented:
 ### Files to Reference
 - `README.md` - Full documentation
 - `MVP_COMPLETE.md` - Detailed completion status
+- `POSTMVP_TODO.md` - Remaining backlog
 - `shared/types.ts` - TypeScript interfaces
 - `middleware/src/server.ts` - Server entry point
 - `extension/popup/App.tsx` - Popup UI component

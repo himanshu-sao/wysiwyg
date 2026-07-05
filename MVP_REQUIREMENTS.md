@@ -66,11 +66,11 @@
 | Content Script | TypeScript + vanilla DOM APIs | - |
 | Popup UI | React 18 + Tailwind CSS | - |
 | Middleware | Node.js 20 + Fastify | - |
-| AI Client | Opencode SDK (primary) | - |
-| AI Fallback | Ollama (local) | Llama 3.1 8B |
+| AI Client | NVIDIA NIM (OpenAI-compatible SDK) | meta/llama-3.1-70b-instruct (default) |
+| AI Fallback | Mock responses (when API key unset) | Built-in mock |
 | File Ops | Node.js fs/promises + simple-git | - |
 | Validation | ESLint + TypeScript CLI | Project config |
-| Sourcemaps | @vercel/webpack-asset-manifest / Vite API | - |
+| Sourcemaps | source-map package + custom resolver | Real Vite/Webpack sourcemap resolution (MVP-05/18) |
 
 ---
 
