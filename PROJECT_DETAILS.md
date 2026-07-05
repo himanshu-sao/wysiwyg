@@ -1,5 +1,23 @@
 # Project Details: AI-Powered UI Editing Browser Extension
 
+> 🗄️ **HISTORICAL DRAFT (pre-MVP feasibility analysis, 2026-07-02) — not a description of
+> the built system.** Read this for *original intent and the user's three north-star use cases*,
+> not for current architecture. It predates implementation and is wrong on several
+> load-bearing points; do not act on its specifics:
+> - **AI backend:** says "Opencode SDK (primary) / Claude / Ollama." Built system uses
+>   **NVIDIA NIM** (`meta/llama-3.1-70b-instruct` default, real — not mock; P10).
+> - **Endpoints:** lists `/api/ai/suggest`, `/api/files/read`, `WS /api/live` — none of these
+>   exist. Real routes: `/api/ai/edit`, `/api/ai/edit/stream`, `/api/ai/export-requirements`,
+>   `/api/files/validate`, `/api/files/write`, `/api/git/undo`, `WS /ws/connect`.
+> - **Scope:** frames wysiwyg as making functional + multi-file changes (Use Cases 2 & 3).
+>   Reality: **Edit mode is CSS/visual single-file** (deliberate MVP scope); functional /
+>   multi-file / new-component are deferred to the vision ([`VISION_REQUIREMENTS.md`](VISION_REQUIREMENTS.md)).
+> - **"Figma-type interface" framing:** the product was later reframed as an "AI-driven
+>   prompt generator with UI access" — see [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+>
+> For the current product description read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md); for the
+> roadmap read [`TODO.md`](TODO.md).
+
 ## Executive Summary
 This document captures the detailed requirements, feasibility analysis, and technical architecture for an AI-powered browser extension that enables developers to make UI changes (cosmetic and functional) by right-clicking elements in their running web application and describing changes in natural language. The AI translates these instructions into code diffs that are applied to the source codebase.
 

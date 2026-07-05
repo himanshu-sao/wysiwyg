@@ -50,3 +50,28 @@ Sharing edit sessions with teammates would require:
 | Middleware | 37 | ✅ All pass |
 | Extension | 30 | ✅ All pass |
 | **Total** | **67** | ✅ |
+
+> ⚠️ Counts above are as of `dd97dee` (2026-07-04). New test files added since
+> (`ProjectProfiles.test.ts`, `PromptTemplates.requirements.test.ts`, `popup.requirements.test.ts`)
+> are not reflected — re-run `npm test` for the current number before quoting this table.
+
+---
+
+## ✅ Requirements Bridge Phase 1 — landed (supersedes the "Still Pending" list above)
+
+The "Still Pending (Future Work)" list above predates the Requirements Bridge decision.
+The actually-active track is the **Requirements Bridge** (Phase 1), tracked authoritatively
+in [`TODO.md`](TODO.md). Foundation done:
+
+- ✅ **P1-1** Project Profile System (`middleware/src/config/project-profiles.ts` — `antikythera` + `generic` profiles, `detectProfile`/`getProfile`).
+- ✅ **P1-2** Extension context-menu (the Export item + mode handling).
+- ✅ **P1-3** `POST /api/ai/export-requirements` + `OpencodeClient.generateRequirementsExport`.
+- ✅ **P1-4** Requirements prompt template (`PromptTemplates.getRequirementsPrompt`).
+- ✅ **P1-5** Popup export UI (spec preview, editable textarea, export button).
+
+Still pending (active):
+
+- 🔴 **P1-0 — Project Registry (user-typed disk path)** — the genuinely missing capability and prerequisite for everything else. See [`TODO.md`](TODO.md).
+- 🔴 **P1-6 — File Export (`POST /api/files/append-ideas`)** — write the spec into the registered project's backlog (`ideas.md` + `requirements/ID-XXX/spec.md`) via `PathSanitizer` + `GitManager`. Blocked on P1-0.
+
+The "Still Pending" items above (multi-file coordinated changes, functional edits, DevTools panel + edit history, team sharing) are **deferred vision work**, not the next task — see [`VISION_REQUIREMENTS.md`](VISION_REQUIREMENTS.md).

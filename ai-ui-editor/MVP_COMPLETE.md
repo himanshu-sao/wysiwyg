@@ -1,5 +1,25 @@
 # AI UI Editor - MVP Complete ✅
 
+> ⚠️ **HISTORICAL + SELF-CONTRADICTORY — superseded by
+> [`README.md`](README.md) + [`TODO.md`](TODO.md) + [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).**
+> This celebratory doc has drift and *internal* contradictions; do not cite its specifics
+> without checking the authoritative trio. Known errors to ignore in the body below:
+> - **Task count:** says "All **20** MVP tasks" near the end — wrong. There are **19** MVP
+>   tasks (MVP-01…MVP-19, per [`MVP_REQUIREMENTS.md`](MVP_REQUIREMENTS.md)).
+> - **AI backend:** line ~32 says "NVIDIA NIM (real AI, not mock)"; lines ~157/169 say
+>   "Opencode SDK / Mock AI responses." The first is **correct** — NVIDIA NIM
+>   (`meta/llama-3.1-70b-instruct`) is real (P10). The "mock / Opencode SDK" lines are stale.
+> - **Sourcemap:** lists "Better Sourcemap Resolution" as a Next Step — already done (P7,
+>   commit `8dbb195`) and even cited as done in this same doc.
+> - **"Running Servers" table:** presents a live-state table; servers are **not** running
+>   by default — use the quick-start steps, not this table, to run.
+> - **Missing:** Export mode, project profiles, the Requirements Bridge (P1-1…P1-5) and the
+>   active P1-0/P1-6 work — none mentioned. Coverage ends at P3/P8/P9.
+>
+> **Suggested fate:** its still-true content is a subset of [`ai-ui-editor/README.md`](README.md)
+> and [`ai-ui-editor/PROJECT_STATUS.md`](PROJECT_STATUS.md); this file is a candidate for
+> deletion after those are reconciled (tracked as part of P1-7).
+
 **Date:** 2026-07-04  
 **Status:** All 19 MVP tasks completed + P3/P8/P9 post-MVP items implemented
 
