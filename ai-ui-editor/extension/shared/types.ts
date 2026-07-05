@@ -99,6 +99,7 @@ export interface WriteRequest {
 // Synced with actual usage in background.ts / popup / content-script (P9).
 // Incoming (popup → background): get-current-element, send-to-server, send-streaming-to-server, ws-send
 // Outgoing (background → popup): show-popup, server-response, server-error, stream-progress, ws-message, capture-element
+// P1-2: Added mode field for distinguishing css-edit vs requirements-export
 export interface ExtensionMessage {
   type:
     | 'show-popup'
@@ -110,7 +111,12 @@ export interface ExtensionMessage {
     | 'stream-progress'
     | 'ws-message'
     | 'ws-send'
-    | 'capture-element';
+    | 'capture-element'
+    | 'mode-changed';
   data?: any;
   error?: string;
+  mode?: 'css-edit' | 'requirements-export';
 }
+
+// P1-2: Mode type for distinguishing edit vs export flows
+export type ExtensionMode = 'css-edit' | 'requirements-export';

@@ -107,6 +107,23 @@ export interface ReadResponse {
   error?: string;
 }
 
+// P1-3: Request to /api/ai/export-requirements
+export interface RequirementsExportRequest {
+  element: ElementContext;
+  instruction: string;
+  context: EditContext;
+  projectProfile?: 'antikythera' | 'generic';
+}
+
+// P1-3: Response from /api/ai/export-requirements
+export interface RequirementsExportResponse {
+  spec: string;              // Markdown spec draft
+  architectureHints: string[]; // Files likely needing changes
+  testScenarios: string[];     // Test cases to implement
+  edgeCases: string[];         // Edge cases to consider
+  error?: string;
+}
+
 // Message types for Chrome extension messaging
 export interface ExtensionMessage {
   type: 'element-selected' | 'show-popup' | 'hide-popup' | 'apply-diff' | 'undo';

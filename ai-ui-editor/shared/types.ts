@@ -82,7 +82,11 @@ export interface WriteResponse {
 
 // Message types for Chrome extension messaging
 export interface ExtensionMessage {
-  type: 'element-selected' | 'show-popup' | 'hide-popup' | 'apply-diff' | 'undo';
+  type: 'element-selected' | 'show-popup' | 'hide-popup' | 'apply-diff' | 'undo' | 'mode-changed';
   data?: any;
   error?: string;
+  mode?: 'css-edit' | 'requirements-export'; // P1-2: mode distinction
 }
+
+// P1-2: Mode type for distinguishing edit vs export flows
+export type ExtensionMode = 'css-edit' | 'requirements-export';

@@ -7,7 +7,8 @@
     "activeTab",
     "contextMenus",
     "scripting",
-    "storage"
+    "storage",
+    "devtools"
   ],
   "host_permissions": [
     "http://localhost/*",
@@ -21,6 +22,7 @@
     "default_popup": "popup/index.html",
     "default_icon": "icons/icon.svg"
   },
+  "devtools_page": "devtools/index.html",
   "content_scripts": [
     {
       "matches": ["http://localhost/*", "https://*/*"],
@@ -30,7 +32,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup/*", "content-script.js", "background.js"],
+      "resources": ["popup/*", "content-script.js", "background.js", "devtools/*"],
       "matches": ["<all_urls>"]
     }
   ]
