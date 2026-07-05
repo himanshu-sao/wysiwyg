@@ -115,20 +115,75 @@ function normalizeDiff(diff: string): string {
 }
 
 /**
- * Sanitizes file paths to prevent directory traversal
+ * Sanitize an AI-returned file path into a safe *project-relative* path.
+ *
+ * THREAT MODEL (GAP_AUDIT "Dual Sanitization Approaches"):
+ * This is a COHERENCE HEURISTIC, NOT a security boundary. Its job is to take
+ * whatever path the AI puts in `EditOption.file` and coerce it into a clean
+ * project-relative path the popup/apply flow can display and later send to
+ * /api/files/write. It is NOT trusted to authorize a write — every write goes
+ * through `PathSanitizer.safeFilePath(projectRoot, file)` in routes/files.ts,
+ * which does the real `path.resolve()`-based traversal guard against the
+ * user-registered project root. Defense in depth: even if sanitizeFilePath is
+ * bypassed, safeFilePath rejects the path server-side before any disk write.
+ *
+ * Why this still matters: a malformed AI path (`../../etc/passwd`, an absolute
+ * path, Windows-style backslashes, null bytes) should not silently become a
+ * confusing value in the popup, and should not be able to smuggle an absolute
+ * or escaped path into the request body at all. The old implementation used a
+ * single `replace(/\.\.\//g, '')` regex, which missed obfuscated variants
+ * (`....//`, `..\`) — this hardened version uses segment-wise normalization so
+ * traversal is removed regardless of how it's spelled.
+ *
+ * Behavior contract (pinned by ResponseParser.test.ts):
+ *  - `../` and `..\` traversal segments are stripped (kept-vs-default path
+ *    unchanged from the old impl).
+ *  - A leading `/` is removed (the popup wants a project-relative path).
+ *  - A path under one of the allowed prefixes (src/, components/, pages/,
+ *    utils/, lib/) is returned as-is.
+ *  - Any other path is prefixed with `src/` so it lands in the source tree.
  */
 export function sanitizeFilePath(filePath: string): string {
-  // Remove any ../ or absolute path attempts
-  const sanitized = filePath.replace(/\.\.\//g, '').replace(/^\//, '');
+  if (typeof filePath !== 'string' || filePath.length === 0) {
+    return 'src/';
+  }
 
-  // Ensure it's within expected directories
+  // Null bytes have no legitimate place in a file path — drop the path entirely.
+  if (filePath.includes('\0')) {
+    return 'src/';
+  }
+
+  // Normalize Windows-style backslashes to forward slashes so `..\` is treated
+  // as traversal just like `../`.
+  let normalized = filePath.replace(/\\/g, '/');
+
+  // Strip leading slashes so absolute-looking paths become relative.
+  normalized = normalized.replace(/^\/+/, '');
+
+  // Segment-wise traversal removal. Splitting on '/' and filtering out '..',
+  // '.', and empty segments (empty segments only create doubled slashes and
+  // have no meaning) handles obfuscated forms the old single-regex missed:
+  //   'src/..//../etc' -> ['src','','','etc'] after dropping '..','.' and the
+  //   empty segments, joined back to 'src/etc' — clean, traversal-free.
+  const segments = normalized.split('/');
+  const kept = segments.filter((seg) => seg !== '' && seg !== '..' && seg !== '.');
+
+  let sanitized = kept.join('/');
+
+  // Ensure it's within the expected source-tree prefixes. If the AI gave us a
+  // path already under one of these, keep it; otherwise default to src/ so the
+  // diff targets the source tree (the popup can still manually pick a file).
   const allowedPrefixes = ['src/', 'components/', 'pages/', 'utils/', 'lib/'];
   for (const prefix of allowedPrefixes) {
-    if (sanitized.startsWith(prefix)) {
+    if (sanitized === prefix.slice(0, -1) || sanitized.startsWith(prefix)) {
       return sanitized;
     }
   }
 
-  // Default to src/ for unknown paths
-  return `src/${sanitized}`;
+  // Default to src/ for unknown paths. Avoid a doubled slash when sanitized is
+  // empty or already slashy.
+  if (sanitized.length === 0) {
+    return 'src/';
+  }
+  return `src/${sanitized.replace(/^\/+/, '')}`;
 }

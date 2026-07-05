@@ -14,8 +14,10 @@ import type { ElementContext } from './shared/types';
 // Returns the captured element context (or null) to the caller via sendResponse.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'capture-element') {
-    const { x, y } = message.data ?? {};
-    const captured = captureElementContext(x, y);
+    const { x, y, projectRoot } = message.data ?? {};
+    const captured = captureElementContext(x, y, projectRoot);
+    // `projectRoot` here is the registered on-disk path (from background); the
+    // function falls back to window.location.origin when it's absent.
     sendResponse(captured);
     return true; // keep the sendResponse contract alive
   }
@@ -23,9 +25,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 // Capture an element's context at the given viewport coordinates.
+// P1-0: `projectRoot` is the user-registered on-disk path handed down from the
+// background (which resolved it from the registry for this page's origin). When
+// absent (no project registered), we fall back to the page origin — the same
+// placeholder behavior as before the registry, so nothing breaks for users who
+// haven't registered a project yet.
 function captureElementContext(
   x?: number,
-  y?: number
+  y?: number,
+  projectRootArg?: string
 ): { element: ElementContext; context: { url: string; framework: string; projectRoot: string; scriptUrl?: string } } | null {
   const target =
     (typeof x === 'number' && typeof y === 'number'
@@ -89,7 +97,9 @@ function captureElementContext(
   });
 
   const framework = detectFramework();
-  const projectRoot = window.location.origin;
+  // P1-0: prefer the registered on-disk path (authoritative for file/git ops);
+  // fall back to the page origin only when no project is registered for it.
+  const projectRoot = projectRootArg || window.location.origin;
 
   // P7: find the most likely originating <script> for the element.
   // Vite dev serves each component as <script type="module" src="/src/...">

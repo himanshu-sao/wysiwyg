@@ -177,6 +177,10 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
         architectureHints: result.architectureHints,
         testScenarios: result.testScenarios,
         edgeCases: result.edgeCases,
+        // P1-6: include the AI-suggested title + priority so the popup can
+        // pre-fill them before the spec is written via /api/files/append-ideas.
+        title: result.title,
+        priority: result.priority,
       };
 
       return reply.send(response);
@@ -187,6 +191,8 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
         architectureHints: [],
         testScenarios: [],
         edgeCases: [],
+        title: undefined,
+        priority: undefined,
         error: error.message || 'Failed to generate requirements export',
       });
     }

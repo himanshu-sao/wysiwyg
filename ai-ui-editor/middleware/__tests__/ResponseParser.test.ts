@@ -215,5 +215,53 @@ describe('ResponseParser', () => {
       expect(sanitizeFilePath('utils/helpers.ts')).toBe('utils/helpers.ts');
       expect(sanitizeFilePath('lib/api.ts')).toBe('lib/api.ts');
     });
+
+    // P1-7 / GAP_AUDIT "Dual Sanitization Approaches": the hardened
+    // sanitizeFilePath must remove obfuscated traversal the old single-regex
+    // `replace(/\.\.\//g, '')` missed, and must collapse to a safe default for
+    // degenerate inputs. These pin the contract; the real security boundary is
+    // PathSanitizer.safeFilePath in routes/files.ts (defense in depth).
+    it('strips Windows-style backslash traversal (..\\)', () => {
+      // `..\..\etc\passwd` normalized to `/`-separated, '..' segments dropped.
+      expect(sanitizeFilePath('..\\..\\etc\\passwd')).toBe('src/etc/passwd');
+      expect(sanitizeFilePath('src\\..\\..\\etc\\passwd')).toBe('src/etc/passwd');
+    });
+
+    it('strips repeated/obfuscated dot-dot-segment traversal', () => {
+      // Real '..' segments are dropped (not resolved backward — same
+      // semantics as the old `replace(/\.\.\//g, '')`, just robust to
+      // obfuscation). '.' segments are dropped too. Empty segments collapse.
+      //   'src/..//../etc/x' -> 'src/etc/x.ts'
+      //   'a/./b/../c.ts'     -> 'a/b/c.ts'   (b is NOT cancelled by '..')
+      expect(sanitizeFilePath('src/..//../etc/x.ts')).toBe('src/etc/x.ts');
+      expect(sanitizeFilePath('a/./b/../c.ts')).toBe('src/a/b/c.ts');
+      // A literal '....' (four dots) is NOT a traversal segment — it's a
+      // harmless literal directory name — so it is kept (empty segments around
+      // it dropped) as a clean path under src/.
+      // (Pinning this so a future "tighter" rewrite doesn't drop real names.)
+      expect(sanitizeFilePath('....//')).toBe('src/....');
+    });
+
+    it('drops null bytes entirely to a safe default', () => {
+      expect(sanitizeFilePath('src/x.ts\0/../../etc/passwd')).toBe('src/');
+      expect(sanitizeFilePath('\0')).toBe('src/');
+    });
+
+    it('collapses empty / non-string inputs to a safe default', () => {
+      // Non-string is guarded off at runtime; cast to satisfy TS.
+      expect(sanitizeFilePath('')).toBe('src/');
+      expect(sanitizeFilePath(null as unknown as string)).toBe('src/');
+      expect(sanitizeFilePath(undefined as unknown as string)).toBe('src/');
+    });
+
+    it('does not let an absolute filesystem path smuggle past as absolute', () => {
+      // Even a real absolute path is reduced to a project-relative path; the
+      // popup/apply flow never receives an absolute path here.
+      expect(sanitizeFilePath('/Users/secret/src/App.tsx')).toBe(
+        'src/Users/secret/src/App.tsx'
+      );
+      // Multiple leading slashes treated the same as one.
+      expect(sanitizeFilePath('///etc/passwd')).toBe('src/etc/passwd');
+    });
   });
 });

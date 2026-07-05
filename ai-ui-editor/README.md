@@ -20,17 +20,21 @@ The middleware uses **NVIDIA NIM API** to generate AI-powered edit options:
 
 ### Available Models
 
-NVIDIA NIM provides access to multiple models. This list mirrors `middleware/src/ai/OpencodeClient.ts` (the file is named `OpencodeClient.ts` historically but wraps NVIDIA NIM via the OpenAI-compatible SDK):
+NVIDIA NIM provides access to multiple models. This table is kept in **lockstep** with the single source of truth, `AVAILABLE_MODELS` in `middleware/src/ai/OpencodeClient.ts` (mirrored by a guard test in `middleware/__tests__/OpencodeClient.models.test.ts`). The file is named `OpencodeClient.ts` historically but wraps NVIDIA NIM via the OpenAI-compatible SDK.
 
 | Model | Description |
 |-------|-------------|
 | `meta/llama-3.1-70b-instruct` | **Default** (set via `NVIDIA_MODEL`; balanced performance/cost) |
 | `anthropic/claude-sonnet-4-20250514` | Claude Sonnet 4 (via NIM) |
+| `anthropic/claude-3.5-sonnet` | Claude 3.5 Sonnet (via NIM) |
 | `meta/llama-3.1-405b-instruct` | Meta Llama 3.1 405B (highest quality) |
-| `google/gemma-2-9b-it` | Google Gemma 2 |
+| `meta/llama-3.1-nemotron-70b-instruct` | NVIDIA Nemotron 70B (Llama 3.1 derivative) |
+| `google/gemma-2-9b-it` | Google Gemma 2 9B |
 | `mistralai/mistral-large-2-instruct` | Mistral Large 2 |
+| `microsoft/phi-3-medium-128k-instruct` | Microsoft Phi-3 Medium (128k context) |
+| `nvidia/nemotron-4-340b-instruct` | NVIDIA Nemotron-4 340B |
 
-Change the model via the `NVIDIA_MODEL` environment variable. (If you add a row here, add it in `OpencodeClient.ts` too — keep the doc and the code's model list in lockstep.)
+Change the model via the `NVIDIA_MODEL` environment variable. The middleware validates at startup that the configured model is in the catalog (`validateConfig()` in `OpencodeClient.ts`); an unknown value is rejected. To add/remove a model, edit `AVAILABLE_MODELS` in `OpencodeClient.ts` and this table — the guard test ensures they can't drift apart.
 
 ### AI Response Format
 
@@ -68,7 +72,7 @@ The AI returns structured JSON with:
 - **Side-by-side diff**: Review changes before applying
 - **Real token streaming**: Options render progressively as the AI streams
 - **Sandboxed previews**: `previewHtml` is sanitized (scripts/event-handlers/dangerous URLs stripped) and rendered in a locked-down iframe
-- **Project Profile System**: built-in `antikythera` + `generic` profiles; more profiles via the registry (P1-0, in progress)
+- **Project Registry (P1-0)**: register projects by their on-disk path; the path becomes the authoritative `projectRoot` for all file/git operations. Per-origin active project with global override. Registration requires a project-marker file on disk (validated by the middleware via `/api/files/probe-root`).
 - **Auto-commit**: Git integration with automatic commits
 - **Undo support**: Revert last change with one click
 - **Live reload**: Changes appear instantly via HMR

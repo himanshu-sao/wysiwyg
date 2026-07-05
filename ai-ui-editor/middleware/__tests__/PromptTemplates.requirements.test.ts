@@ -159,5 +159,34 @@ describe('PromptTemplates - Requirements Export', () => {
       expect(prompt).toContain('**testScenarios**:');
       expect(prompt).toContain('**edgeCases**:');
     });
+
+    // P1-6: the prompt must ask the AI for a title + priority so the popup can
+    // pre-fill them before the spec is written to the project's backlog.
+    it('should request a title in the output format', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test',
+        mockContext,
+        PROFILES.antikythera
+      );
+      expect(prompt).toContain('"title"');
+      expect(prompt).toContain('**title**');
+      expect(prompt).toContain('ID-XXX');
+      expect(prompt).toContain('{title}');
+    });
+
+    it('should request a priority with the three allowed values', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test',
+        mockContext,
+        PROFILES.generic
+      );
+      expect(prompt).toContain('"priority"');
+      expect(prompt).toContain('"High"');
+      expect(prompt).toContain('"Medium"');
+      expect(prompt).toContain('"Low"');
+      expect(prompt).toContain('**priority**');
+    });
   });
 });

@@ -99,6 +99,8 @@ Generate a structured specification for implementing this feature/requirement. T
 
 ## Output Format (JSON)
 {
+  "title": "Short, imperative title for the requirement (3-8 words)",
+  "priority": "High" | "Medium" | "Low",
   "spec": "# Specification\\n\\n## Overview\\nClear description...\\n\\n## Requirements\\n1. Functional requirements...\\n\\n## Edge Cases\\nEdge cases...\\n\\n## Acceptance Criteria\\nCriteria...",
   "architectureHints": ["src/components/NewComponent.tsx", "api/routes/newRoute.ts"],
   "testScenarios": ["Should render correctly", "Should handle user input", "Should error gracefully"],
@@ -106,10 +108,12 @@ Generate a structured specification for implementing this feature/requirement. T
 }
 
 ## Guidelines
-1. **spec**: A complete markdown specification with Overview, Requirements (numbered, testable), Edge Cases, and Acceptance Criteria
-2. **architectureHints**: File paths that will likely need to be created or modified (use project's directory conventions: ${JSON.stringify(profile.directories)})
-3. **testScenarios**: Specific test cases covering happy path, error cases, and edge cases
-4. **edgeCases**: Unusual scenarios the implementation should handle
+1. **title**: A concise, human-readable title for this requirement. It will appear as the summary line in the project's backlog (e.g. \`- [ID-XXX] {title} | Priority: {priority}\`). Keep it short and imperative — no trailing period.
+2. **priority**: One of "High", "Medium", or "Low". Judge by user impact, risk, and dependency: High for user-facing/blocking changes, Medium for normal features, Low for nice-to-haves.
+3. **spec**: A complete markdown specification with Overview, Requirements (numbered, testable), Edge Cases, and Acceptance Criteria
+4. **architectureHints**: File paths that will likely need to be created or modified (use project's directory conventions: ${JSON.stringify(profile.directories)})
+5. **testScenarios**: Specific test cases covering happy path, error cases, and edge cases
+6. **edgeCases**: Unusual scenarios the implementation should handle
 
 ## Project-Specific Notes
 - Artifact format: ${profile.artifactFormat.join(', ')}

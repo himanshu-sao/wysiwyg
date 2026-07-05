@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EditRequest, EditOption, ExtensionMode } from '../shared/types';
+import { EditRequest, EditOption, ExtensionMode, ProjectRegistryState, RegisteredProject } from '../shared/types';
 import { applyDiff } from '../shared/diff';
 import { resolveApplyBase } from '../shared/apply';
 import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
@@ -19,6 +19,10 @@ const App: React.FC = () => {
   const [architectureHints, setArchitectureHints] = useState<string[]>([]);
   const [testScenarios, setTestScenarios] = useState<string[]>([]);
   const [edgeCases, setEdgeCases] = useState<string[]>([]);
+  // P1-6: AI-suggested title + priority, pre-filled in the popup and editable
+  // before the spec is written via /api/files/append-ideas.
+  const [exportTitle, setExportTitle] = useState('');
+  const [exportPriority, setExportPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   // P8: live token buffer. As the middleware streams real NIM deltas, we
   // accumulate them here so the user sees the JSON building up rather than a
   // single staged status line. Reset whenever a non-token stage arrives.
@@ -45,6 +49,16 @@ const App: React.FC = () => {
 
   // Pending write waiting on a validation result before being committed.
   const pendingWriteRef = useRef<{ file: string; content: string; commitMessage: string } | null>(null);
+
+  // P1-0: Project Registry state. The active project's on-disk `path` becomes
+  // `projectRoot` for every outbound request (replacing window.location.origin).
+  // The background owns persistence; the popup just mirrors state via messages.
+  const [registryState, setRegistryState] = useState<ProjectRegistryState | null>(null);
+  const [newProjectPath, setNewProjectPath] = useState('');
+  const [registryStatus, setRegistryStatus] = useState('');
+  const [currentOrigin, setCurrentOrigin] = useState('');
+  // The active project for the current tab's origin (global override wins).
+  // Recomputed whenever registryState or currentOrigin changes (see useMemo below).
 
   useEffect(() => {
     const listener = (message: any) => {
@@ -79,9 +93,31 @@ const App: React.FC = () => {
             setArchitectureHints(data.architectureHints || []);
             setTestScenarios(data.testScenarios || []);
             setEdgeCases(data.edgeCases || []);
+            // P1-6: pre-fill AI-suggested title + priority; user can edit both.
+            setExportTitle(data.title || '');
+            setExportPriority(
+              data.priority === 'High' || data.priority === 'Low' ? data.priority : 'Medium'
+            );
             setLoading(false);
             setProgress('');
             setTokenBuffer('');
+            break;
+          }
+          // P1-6: Check for append-ideas export success response.
+          if (typeof data.success === 'boolean') {
+            // Could be either a validation result (already handled above with
+            // pendingWriteRef) or an append-ideas result. Append-ideas has `id`
+            // and `specPath`; validation has `valid` and `errors`.
+            if (typeof data.id === 'string') {
+              // append-ideas success (201) or idempotency conflict (409).
+              if (data.success) {
+                setError(`Exported as ${data.id} → ${data.specPath || data.id}`);
+              } else {
+                setError(`Export conflict: ${data.error || data.id}`);
+              }
+            }
+            setLoading(false);
+            setProgress('');
             break;
           }
           // Otherwise it's an AI edit-options response.
@@ -123,6 +159,16 @@ const App: React.FC = () => {
           }
           break;
         }
+        case 'registry-state':
+          // P1-0: background replies with the full registry state after any
+          // registry mutation (add/list/select/clear). Mirror it locally so
+          // the project dropdown + active labels render from a single source.
+          setRegistryState(message.data?.state ?? null);
+          setRegistryStatus('');
+          break;
+        case 'registry-error':
+          setRegistryStatus(message.error || 'Registry error');
+          break;
       }
       return true;
     };
@@ -134,8 +180,22 @@ const App: React.FC = () => {
       if (response?.data) {
         setElementContext(response.data);
         updateContextHint(response.data);
+        // P1-0: capture the page origin from the captured context so we can
+        // resolve the active registered project for THIS tab.
+        const url = response.data?.context?.url;
+        if (url) {
+          try {
+            setCurrentOrigin(new URL(url).origin);
+          } catch {
+            // ignore malformed URLs
+          }
+        }
       }
     });
+
+    // P1-0: ask the background for the current registry state on popup open so
+    // the project dropdown renders immediately (not only after a user mutation).
+    chrome.runtime.sendMessage({ type: 'registry-list' });
 
     return () => {
       if (messageListenerRef.current) {
@@ -150,6 +210,89 @@ const App: React.FC = () => {
     const selector = element.id ? `#${element.id}` : `.${element.classNames.join('.')}`;
     const hint = `Editing: ${selector} (${context.framework})`;
     setContextHint(hint);
+  }
+
+  // P1-0: active project for the current origin (global override wins).
+  // Computed as a regular function call so it re-runs on every render with the
+  // freshest registryState/origin — cheap enough, and avoids stale-closure
+  // bugs around the override toggle.
+  function activeProject(): RegisteredProject | undefined {
+    if (!registryState) return undefined;
+    if (registryState.globalActiveId) {
+      const g = registryState.projects.find((p) => p.id === registryState.globalActiveId);
+      if (g) return g;
+    }
+    if (!currentOrigin) return undefined;
+    const idForOrigin = registryState.activeByOrigin[currentOrigin];
+    if (!idForOrigin) return undefined;
+    return registryState.projects.find((p) => p.id === idForOrigin);
+  }
+
+  // P1-0: the projectRoot to send with every request. Prefer the active
+  // registered project's on-disk path; otherwise fall back to whatever the
+  // captured context carries (the page origin). Always returns a string so
+  // the request shape stays stable.
+  function effectiveProjectRoot(): string {
+    const active = activeProject();
+    if (active?.path) return active.path;
+    return elementContext?.context.projectRoot || '';
+  }
+
+  // P1-0: handlers for the project registry UI (Add project / select active
+  // per-origin / set global override / clear override). All mutations go through
+  // the background so chrome.storage stays the single source of truth.
+  async function handleAddProject(e: React.FormEvent) {
+    e.preventDefault();
+    const path = newProjectPath.trim();
+    if (!path) return;
+    setRegistryStatus('Validating project root…');
+    chrome.runtime.sendMessage(
+      {
+        type: 'registry-add',
+        path,
+      },
+      (resp) => {
+        if (resp?.type === 'registry-error') {
+          setRegistryStatus(resp.error || 'Could not register project');
+        } else if (resp?.type === 'registry-state') {
+          setRegistryStatus('Project registered');
+          setNewProjectPath('');
+          // Auto-select the just-added project for this origin so the user
+          // doesn't have to do a second click to start using it.
+          const added = resp.data?.added as RegisteredProject | undefined;
+          if (added && currentOrigin) {
+            chrome.runtime.sendMessage({
+              type: 'registry-select-active',
+              data: { projectId: added.id },
+              origin: currentOrigin,
+            });
+          }
+        }
+      }
+    );
+  }
+
+  function handleSelectProject(projectId: string) {
+    if (!currentOrigin) return;
+    chrome.runtime.sendMessage({
+      type: 'registry-select-active',
+      data: { projectId },
+      origin: currentOrigin,
+    });
+  }
+
+  function handleSetOverride(projectId: string | '') {
+    // Empty string = clear the global override so per-origin selection resumes.
+    // Non-empty = set this project as the global active across all origins.
+    if (!projectId) {
+      chrome.runtime.sendMessage({ type: 'registry-clear-override' });
+      return;
+    }
+    chrome.runtime.sendMessage({
+      type: 'registry-select-active',
+      data: { projectId },
+      // origin omitted → the background sets the global override (not per-origin).
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -175,7 +318,10 @@ const App: React.FC = () => {
     const request: EditRequest = {
       element: elementContext.element,
       instruction,
-      context: elementContext.context,
+      // P1-0: override the captured context's projectRoot with the active
+      // registered project's on-disk path so the middleware writes to the
+      // right repo (falls back to the origin when nothing's registered).
+      context: { ...elementContext.context, projectRoot: effectiveProjectRoot() || elementContext.context.projectRoot },
     };
 
     if (isExportMode) {
@@ -228,39 +374,55 @@ const App: React.FC = () => {
     chrome.runtime.sendMessage(
       {
         type: 'send-to-server',
-        data: { endpoint: '/api/files/validate', body: { file, content } },
+        data: { endpoint: '/api/files/validate', body: { file, content, projectRoot: effectiveProjectRoot() } },
       }
     );
 
     pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
   }
 
-  // P1-5: Handle export requirements to ideas.md
+  // P1-5/P1-6: Export the edited spec to the active project's backlog via
+  // POST /api/files/append-ideas. The registered projectRoot must be set (P1-0).
+  // On success the endpoint returns the generated ID + specPath for confirmation.
   async function handleExport() {
-    if (!confirm('Export this specification to antikythera ideas.md?')) return;
+    const projectName = activeProject()?.displayName || 'this project';
+    const intakeLabel = activeProject()?.profileName === 'antikythera'
+      ? 'automation-ideas/ideas.md'
+      : 'TODO.md';
+    if (!confirm(`Export this specification (${exportPriority} priority) to ${projectName}'s ${intakeLabel}?`)) return;
+
+    const root = effectiveProjectRoot();
+    if (!root || root.startsWith('http')) {
+      setError('No registered project path — register a project first (Project dropdown above).');
+      return;
+    }
 
     setLoading(true);
     setError('');
 
-    // For now, just show a success message - actual export will be implemented in P1-6
     chrome.runtime.sendMessage({
       type: 'send-to-server',
       data: {
         endpoint: '/api/files/append-ideas',
         body: {
           spec: specEditable,
+          title: exportTitle.trim() || undefined,
+          priority: exportPriority,
           architectureHints,
           testScenarios,
           edgeCases,
           element: elementContext?.element,
           instruction,
+          projectRoot: root,
+          projectProfile: activeProject()?.profileName as ('antikythera' | 'generic') | undefined,
         },
       },
     });
 
-    // Pending implementation - P1-6 will implement the actual export
-    setLoading(false);
-    setError('Export feature coming in P1-6 - specification saved locally for now');
+    // P1-6: handle the server response (the background relay sends back
+    // server-response or server-error). The loading spinner will show until the
+    // response arrives; on success we'll show the generated ID.
+    // We don't immediately clear loading here — the response handler will.
   }
 
   // P7 / MVP-18: user manually picks a source file when sourcemap resolution
@@ -276,7 +438,7 @@ const App: React.FC = () => {
     // origin; the sample project root comes from the captured element context).
     try {
       const res = await fetch(
-        `http://localhost:3000/api/files/read?file=${encodeURIComponent(pickedFile)}&projectRoot=${encodeURIComponent(elementContext?.context.projectRoot || '')}`
+        `http://localhost:3000/api/files/read?file=${encodeURIComponent(pickedFile)}&projectRoot=${encodeURIComponent(effectiveProjectRoot())}`
       );
       if (!res.ok) {
         const txt = await res.text();
@@ -299,7 +461,7 @@ const App: React.FC = () => {
       type: 'send-to-server',
       data: {
         endpoint: '/api/files/write',
-        body: { file, content, commitMessage, projectRoot: elementContext?.context.projectRoot },
+        body: { file, content, commitMessage, projectRoot: effectiveProjectRoot() },
       },
     });
     pendingWriteRef.current = null;
@@ -310,7 +472,7 @@ const App: React.FC = () => {
       type: 'send-to-server',
       data: {
         endpoint: '/api/git/undo',
-        body: { projectRoot: elementContext?.context.projectRoot },
+        body: { projectRoot: effectiveProjectRoot() },
       },
     });
   }
@@ -326,11 +488,18 @@ const App: React.FC = () => {
 
   // P1-2: Mode-specific title and description
   const isExportMode = mode === 'requirements-export';
+  // P1-0: dynamic labels driven by the active registered project (defaults to
+  // a generic name when nothing is registered — no more hardcoded "antikythera").
+  const activeProj = activeProject();
+  const projectLabel = activeProj?.displayName || 'project';
+  const intakeLabel = (activeProj && activeProj.profileName === 'antikythera')
+    ? 'automation-ideas/ideas.md'
+    : 'ideas.md';
 
   return (
     <div className="p-6 w-96">
       <h1 className="text-lg font-bold mb-4">
-        {isExportMode ? 'Export to Antikythera' : 'AI UI Editor'}
+        {isExportMode ? `Export to ${projectLabel}` : 'AI UI Editor'}
       </h1>
       {/* P1-2: Mode indicator */}
       <div className="mb-3 flex items-center gap-2">
@@ -342,6 +511,75 @@ const App: React.FC = () => {
           {isExportMode ? 'Requirements Export' : 'CSS Edit'}
         </span>
       </div>
+
+      {/* P1-0: Project Registry. Lets the user register on-disk project paths and
+          pick the active one for this tab's origin (or set a global override). */}
+      <details className="mb-3 border rounded text-xs">
+        <summary className="cursor-pointer px-2 py-1 font-medium text-gray-700">
+          Project{activeProj ? `: ${activeProj.displayName}` : ' (none)'}
+        </summary>
+        <div className="p-2 space-y-2">
+          {registryState && registryState.projects.length > 0 ? (
+            <>
+              <label className="block text-gray-600">
+                Active project for this tab
+                <select
+                  className="ml-2 border rounded px-1 py-0.5"
+                  value={activeProj?.id ?? ''}
+                  onChange={(e) => handleSelectProject(e.target.value)}
+                >
+                  <option value="">(none — use page origin)</option>
+                  {registryState.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName} ({p.profileName})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-gray-600">
+                Global override
+                <select
+                  className="ml-2 border rounded px-1 py-0.5"
+                  value={registryState.globalActiveId ?? ''}
+                  onChange={(e) => handleSetOverride(e.target.value)}
+                >
+                  <option value="">(none — per-origin)</option>
+                  {registryState.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <p className="text-gray-500">
+              No projects registered. Add one below (its path becomes the
+              projectRoot wysiwyg writes to).
+            </p>
+          )}
+
+          <form onSubmit={handleAddProject} className="flex gap-1">
+            <input
+              value={newProjectPath}
+              onChange={(e) => setNewProjectPath(e.target.value)}
+              placeholder="/absolute/path/to/project"
+              className="flex-1 p-1 border rounded text-xs"
+              title="Absolute on-disk path to the project root"
+            />
+            <button
+              type="submit"
+              className="bg-gray-700 text-white px-2 py-1 rounded text-xs"
+            >
+              Add
+            </button>
+          </form>
+          {registryStatus && (
+            <p className="text-[10px] text-gray-600">{registryStatus}</p>
+          )}
+        </div>
+      </details>
+
       <p className="text-sm text-gray-500 mb-4">{contextHint}</p>
 
       <form onSubmit={handleSubmit} className="mb-4">
@@ -450,6 +688,31 @@ const App: React.FC = () => {
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-gray-700">Generated Specification</h2>
 
+          {/* P1-6: Title + Priority — AI-suggested, user-editable before export. */}
+          <div className="space-y-2 border rounded p-3 bg-gray-50">
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Title</span>
+              <input
+                value={exportTitle}
+                onChange={(e) => setExportTitle(e.target.value)}
+                placeholder="Short, imperative title for the backlog"
+                className="w-full p-1.5 border rounded text-xs mt-1"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-600">Priority</span>
+              <select
+                value={exportPriority}
+                onChange={(e) => setExportPriority(e.target.value as 'High' | 'Medium' | 'Low')}
+                className="ml-2 p-1 border rounded text-xs mt-1"
+              >
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </label>
+          </div>
+
           {/* Editable spec textarea */}
           <div className="border rounded p-3">
             <label className="text-xs font-medium text-gray-600 mb-1 block">
@@ -511,7 +774,7 @@ const App: React.FC = () => {
             disabled={loading}
             className="w-full bg-purple-600 text-white py-2 rounded font-medium hover:bg-purple-700 disabled:bg-gray-400"
           >
-            {loading ? 'Exporting...' : 'Export to ideas.md'}
+            {loading ? 'Exporting...' : `Export to ${intakeLabel}`}
           </button>
         </div>
       )}

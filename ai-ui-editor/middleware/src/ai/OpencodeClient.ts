@@ -10,11 +10,8 @@ import type { ProjectProfile } from '../config/project-profiles';
  * NVIDIA NIM provides OpenAI-compatible API access to various models.
  * Base URL: https://integrate.api.nvidia.com/v1
  *
- * Available models for coding tasks:
- * - anthropic/claude-sonnet-4-20250514
- * - meta/llama-3.1-405b-instruct
- * - google/gemma-2-9b-it
- * - mistralai/mistral-large-2-instruct
+ * The single source of truth for the model catalog is AVAILABLE_MODELS below.
+ * Keep ai-ui-editor/README.md's "Available Models" table in lockstep with it.
  *
  * Get API key from: https://build.nvidia.com/
  */
@@ -25,8 +22,27 @@ const nvidiaNim = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY || '',
 });
 
-// Default model to use (can be overridden via env)
-// Available models: meta/llama-3.1-70b-instruct, mistralai/mistral-large-2-instruct, nvidia/llama-3.1-nemotron-70b-instruct
+// P1-7 / GAP_AUDIT "Model List Proliferation": the SINGLE source of truth for
+// the NVIDIA NIM model catalog. Previously three divergent lists lived here
+// (a header comment, the DEFAULT_MODEL comment, and listAvailableModels') plus
+// a fourth in ai-ui-editor/README.md. All of them now derive from this one
+// constant. To add/remove a model, edit AVAILABLE_MODELS here and the README
+// table only — listAvailableModels() returns it and the header comment points
+// at it. DEFAULT_MODEL is guaranteed to be a member of this list.
+export const AVAILABLE_MODELS: readonly string[] = [
+  'anthropic/claude-sonnet-4-20250514',
+  'anthropic/claude-3.5-sonnet',
+  'meta/llama-3.1-405b-instruct',
+  'meta/llama-3.1-70b-instruct',
+  'meta/llama-3.1-nemotron-70b-instruct',
+  'google/gemma-2-9b-it',
+  'mistralai/mistral-large-2-instruct',
+  'microsoft/phi-3-medium-128k-instruct',
+  'nvidia/nemotron-4-340b-instruct',
+];
+
+// Default model to use (can be overridden via env). Must be a member of
+// AVAILABLE_MODELS; validated at startup in validateConfig().
 const DEFAULT_MODEL = process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct';
 
 const MAX_RETRIES = 3;
@@ -319,6 +335,23 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * P1-6: normalize the AI-returned priority to one of the allowed values.
+ * Accepts any casing; defaults to 'Medium' when the model produces something
+ * unexpected (or omits the field) so the popup always has a sane pre-fill.
+ * Exported for unit testing.
+ */
+export function normalizePriority(raw: any): 'High' | 'Medium' | 'Low' {
+  if (typeof raw === 'string') {
+    const v = raw.trim();
+    const lower = v.toLowerCase();
+    if (lower === 'high') return 'High';
+    if (lower === 'low') return 'Low';
+    if (lower === 'medium') return 'Medium';
+  }
+  return 'Medium';
+}
+
+/**
  * Get API usage statistics from the last response
  * Note: This would need to be tracked per-request in production
  */
@@ -335,25 +368,36 @@ export async function getApiUsage(): Promise<{
 /**
  * List available models on NVIDIA NIM
  * Useful for debugging and model selection
+ *
+ * P1-7 / GAP_AUDIT: returns AVAILABLE_MODELS (the single source of truth) so
+ * the list can never drift from the constant. NVIDIA NIM has no models
+ * endpoint, so this is the authoritative catalog.
  */
 export async function listAvailableModels(): Promise<string[]> {
   try {
     // Note: NVIDIA NIM doesn't have a models endpoint yet
-    // Return the list of known supported models
-    return [
-      'anthropic/claude-sonnet-4-20250514',
-      'anthropic/claude-3.5-sonnet',
-      'meta/llama-3.1-405b-instruct',
-      'meta/llama-3.1-70b-instruct',
-      'google/gemma-2-9b-it',
-      'mistralai/mistral-large-2-instruct',
-      'microsoft/phi-3-medium-128k-instruct',
-      'nvidia/nemotron-4-340b-instruct',
-    ];
+    // Return the list of known supported models (single source of truth).
+    return [...AVAILABLE_MODELS];
   } catch (error: any) {
     console.error('[NvidiaNIM] Failed to list models:', error.message);
     return [];
   }
+}
+
+/**
+ * P1-7 / GAP_AUDIT: validate the configured DEFAULT_MODEL against the catalog.
+ * Asserts DEFAULT_MODEL is a member of AVAILABLE_MODELS — guards against an env
+ * NVIDIA_MODEL value that's typo'd or stale. Returns the resolved model on
+ * success; throws on mismatch. Safe to call at startup. Exported for tests.
+ */
+export function validateConfig(): { model: string } {
+  if (!AVAILABLE_MODELS.includes(DEFAULT_MODEL)) {
+    throw new Error(
+      `OpencodeClient: DEFAULT_MODEL "${DEFAULT_MODEL}" is not in AVAILABLE_MODELS. ` +
+        `Valid models: ${AVAILABLE_MODELS.join(', ')}`
+    );
+  }
+  return { model: DEFAULT_MODEL };
 }
 
 /**
@@ -374,6 +418,8 @@ export async function generateRequirementsExport(
   architectureHints: string[];
   testScenarios: string[];
   edgeCases: string[];
+  title?: string;
+  priority?: 'High' | 'Medium' | 'Low';
 }> {
   const prompt = getRequirementsPrompt(element, instruction, context, profile);
 
@@ -387,6 +433,8 @@ export async function generateRequirementsExport(
           architectureHints: ['src/components/TodoComponent.tsx'],
           testScenarios: ['Should render component', 'Should handle user input'],
           edgeCases: ['Empty state handling', 'Error state display'],
+          title: 'Implement the requested feature',
+          priority: 'Medium',
         };
       }
 
@@ -397,7 +445,7 @@ export async function generateRequirementsExport(
         messages: [
           {
             role: 'system',
-            content: 'You are a requirements engineer for software projects. You respond with structured JSON containing specifications, architecture hints, test scenarios, and edge cases.',
+            content: 'You are a requirements engineer for software projects. You respond with structured JSON containing a title, priority, specification, architecture hints, test scenarios, and edge cases.',
           },
           {
             role: 'user',
@@ -421,6 +469,8 @@ export async function generateRequirementsExport(
         architectureHints: Array.isArray(parsed.architectureHints) ? parsed.architectureHints : [],
         testScenarios: Array.isArray(parsed.testScenarios) ? parsed.testScenarios : [],
         edgeCases: Array.isArray(parsed.edgeCases) ? parsed.edgeCases : [],
+        title: typeof parsed.title === 'string' ? parsed.title : undefined,
+        priority: normalizePriority(parsed.priority),
       };
     } catch (error: any) {
       const isRetryable =

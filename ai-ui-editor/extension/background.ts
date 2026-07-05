@@ -1,7 +1,38 @@
-import type { ExtensionMessage } from './shared/types';
+import type { ExtensionMessage, RegistryStorage, ProjectRegistryState } from './shared/types';
+import { createRegistry, STORAGE_KEY } from './shared/projectRegistry';
 
 // Map to store tab-specific state
 const tabState = new Map<number, any>();
+
+// P1-0: chrome.storage.local adapter for the project registry. Injected into
+// createRegistry() so the pure registry logic stays testable without chrome.
+const chromeStorageAdapter: RegistryStorage = {
+  async get(): Promise<ProjectRegistryState | null> {
+    const result = await chrome.storage.local.get(STORAGE_KEY);
+    return (result[STORAGE_KEY] as ProjectRegistryState) ?? null;
+  },
+  async set(state: ProjectRegistryState): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEY]: state });
+  },
+};
+
+const registry = createRegistry(chromeStorageAdapter);
+
+// P1-0: validate an on-disk path via the middleware /api/files/probe-root
+// endpoint before letting it into the registry. The extension can't read disk
+// (service worker has no fs); the middleware can and already runs for /read.
+async function probeRootViaMiddleware(rawPath: string): Promise<{ valid: boolean; marker: string | null }> {
+  try {
+    const res = await fetch(
+      `${MIDDLEWARE_HTTP_URL}/api/files/probe-root?path=${encodeURIComponent(rawPath)}`
+    );
+    if (!res.ok) return { valid: false, marker: null };
+    const data = (await res.json()) as { valid?: boolean; marker?: string | null };
+    return { valid: !!data.valid, marker: data.marker ?? null };
+  } catch {
+    return { valid: false, marker: null };
+  }
+}
 
 // WebSocket connection to middleware server.
 // The middleware mounts WS at /ws/connect (server.ts register wsRoutes under
@@ -13,7 +44,9 @@ const MIDDLEWARE_HTTP_URL = 'http://localhost:3000';
 // Create the "Edit with AI" context menu on right-click.
 // (contextMenus belongs to the service worker, NOT the content script —
 //  see POSTMVP_TODO.md P2. Previously this lived in content-script.ts and failed.)
-// P1-2: Added second menu item for "Export to Antikythera TODO" (requirements mode)
+// P1-2: Added second menu item for requirements-export mode.
+// P1-0: Menu labels are project-generic now (the menu is built in onInstalled,
+// before any origin is known). The popup surfaces the active project's name.
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'ai-ui-editor',
@@ -22,7 +55,7 @@ chrome.runtime.onInstalled.addListener(() => {
   });
   chrome.contextMenus.create({
     id: 'ai-ui-editor-export',
-    title: 'Export to Antikythera TODO',
+    title: 'Export to project TODO',
     contexts: ['all'],
   });
 });
@@ -40,22 +73,34 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!isExportMode && !isCssEditMode) return;
 
   try {
+    // P1-0: resolve the registered on-disk projectRoot for this tab's origin
+    // BEFORE capturing, so the content script can stamp it onto the captured
+    // context instead of the `window.location.origin` placeholder. Falls back
+    // to undefined (→ content script keeps origin) when nothing is registered.
+    const origin = info.pageUrl ? new URL(info.pageUrl).origin : undefined;
+    const openPath = origin ? await resolveActiveProjectPath(origin) : undefined;
+
     // info.x/info.y are page coordinates of the click (present for non-link/
     // non-editable contexts); OnClickData types them optional, so cast.
     const { x, y } = info as chrome.contextMenus.OnClickData & { x?: number; y?: number };
     const results = await chrome.tabs.sendMessage(tab.id, {
       type: 'capture-element',
-      data: { x, y },
+      data: { x, y, projectRoot: openPath },
     });
     if (results) {
-      // Store mode in tab state for the popup to read
+      // Store mode + registered projectRoot in tab state for the popup to read.
+      // The registered path (if any) overrides the captured context's origin.
       tabState.set(tab.id, {
         ...results,
+        context: { ...results.context, projectRoot: openPath ?? results.context.projectRoot },
         mode: isExportMode ? 'requirements-export' : 'css-edit',
       });
       chrome.runtime.sendMessage({
         type: 'show-popup',
-        data: results,
+        data: {
+          ...results,
+          context: { ...results.context, projectRoot: openPath ?? results.context.projectRoot },
+        },
         mode: isExportMode ? 'requirements-export' : 'css-edit',
       });
     }
@@ -67,6 +112,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     });
   }
 });
+
+// P1-0: resolve the active registered project's on-disk path for a page origin.
+// Honors the global override (set via setOverride/selectActive(undefined)).
+// Returns undefined when nothing is registered/active for the origin — callers
+// then fall back to the captured context's `window.location.origin`.
+async function resolveActiveProjectPath(origin: string): Promise<string | undefined> {
+  await registry.load();
+  const active = registry.getActive(origin);
+  return active?.path;
+}
 
 // Connect to middleware WebSocket
 function connectWebSocket() {
@@ -238,6 +293,71 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         ws.send(JSON.stringify(message.data));
       }
       break;
+
+    // P1-0: Project Registry message handlers. Each is async; we return true to
+    // keep the sendResponse port open and reply from the .then(). The popup
+    // drives these (Add project / select active / clear override / list).
+    case 'registry-add': {
+      (async () => {
+        try {
+          await registry.load();
+          const project = await registry.add(
+            {
+              path: message.path ?? '',
+              displayName: message.displayName,
+              profileName: message.profileName,
+            },
+            { validatePath: probeRootViaMiddleware }
+          );
+          sendResponse({
+            type: 'registry-state',
+            data: { state: registry.getState(), added: project },
+          });
+        } catch (error: any) {
+          sendResponse({ type: 'registry-error', error: error.message || 'Failed to add project' });
+        }
+      })();
+      return true; // async sendResponse
+    }
+
+    case 'registry-list': {
+      (async () => {
+        try {
+          await registry.load();
+          sendResponse({ type: 'registry-state', data: { state: registry.getState() } });
+        } catch (error: any) {
+          sendResponse({ type: 'registry-error', error: error.message || 'Failed to list projects' });
+        }
+      })();
+      return true;
+    }
+
+    case 'registry-select-active': {
+      (async () => {
+        try {
+          await registry.load();
+          // origin undefined → global override; origin present → per-origin selection.
+          await registry.selectActive(message.data?.projectId, message.origin);
+          sendResponse({ type: 'registry-state', data: { state: registry.getState() } });
+        } catch (error: any) {
+          sendResponse({ type: 'registry-error', error: error.message || 'Failed to select project' });
+        }
+      })();
+      return true;
+    }
+
+    case 'registry-clear-override': {
+      (async () => {
+        try {
+          await registry.load();
+          await registry.clearOverride();
+          sendResponse({ type: 'registry-state', data: { state: registry.getState() } });
+        } catch (error: any) {
+          sendResponse({ type: 'registry-error', error: error.message || 'Failed to clear override' });
+        }
+      })();
+      return true;
+    }
 
     default:
       break;
