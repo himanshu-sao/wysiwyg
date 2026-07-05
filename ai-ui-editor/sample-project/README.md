@@ -1,3 +1,14 @@
+# wysiwyg Sample Target Project
+
+> **This is the demo app that wysiwyg edits.** It's the React + Vite + Tailwind target you
+> right-click into during development/testing (served on `localhost:5174`). It is **not**
+> wysiwyg itself — for the extension + middleware see [`../../README.md`](../../README.md)
+> and [`../README.md`](../README.md), and for the project pitch see
+> [`../../PROJECT_BRIEF.md`](../../PROJECT_BRIEF.md). The text below is the untouched Vite
+> scaffold README (kept for oxlint/HMR plugin reference).
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
