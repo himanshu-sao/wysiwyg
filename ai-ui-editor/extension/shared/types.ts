@@ -127,7 +127,7 @@ export interface RequirementsExportRequest {
   element: ElementContext;
   instruction: string;
   context: EditContext;
-  projectProfile?: 'antikythera' | 'generic';
+  projectProfile?: 'example' | 'generic';
 }
 
 // Message types for Chrome extension messaging.
@@ -187,7 +187,7 @@ export interface AppendIdeasRequest {
   element?: ElementContext;
   instruction: string;
   projectRoot: string;
-  projectProfile?: 'antikythera' | 'generic';
+  projectProfile?: 'example' | 'generic';
 }
 
 // P1-6: Response from POST /api/files/append-ideas.
@@ -236,7 +236,7 @@ export interface ProbeRootResponse {
 export interface RegisteredProject {
   id: string;            // stable id (origin/path-derived), for selection
   path: string;          // absolute on-disk path — the projectRoot sent to middleware
-  profileName: string;   // built-in profile hint ('antikythera' | 'generic' | '<name>')
+  profileName: string;   // built-in profile hint ('example' | 'generic' | '<name>')
   displayName: string;   // user-facing label (defaults to basename of path)
   registeredAt: number;  // unix ms
 }

@@ -24,24 +24,23 @@ export interface ProjectProfile {
  * Built-in project profiles
  */
 export const PROFILES: Record<string, ProjectProfile> = {
-  antikythera: {
-    name: 'antikythera',
+  example: {
+    name: 'example',
     urlPatterns: ['localhost:5173', 'localhost:8006'],
-    techStack: ['FastAPI', 'React 19', 'Vite', 'Tailwind', 'Python 3.9'],
+    techStack: ['React 19', 'Vite', 'Tailwind', 'TypeScript'],
     directories: {
       backend: 'api/',
-      frontend: 'ui/src/',
-      requirements: 'automation-ideas/',
+      frontend: 'src/',
     },
-    artifactFormat: ['spec.md', 'architecture.md', 'tests.md', 'execution_report.md'],
-    intakeFile: 'automation-ideas/ideas.md',
-    agents: ['Orchestrator', 'Refiner', 'Architect', 'Tester', 'Executor', 'Audit', 'Memory'],
-    promptContext: `antikythera is a FastAPI + React multi-agent automation platform with:
-- Backend: api/ (FastAPI, state managers, integration adapters)
-- Frontend: ui/src/ (React 19, Vite, Tailwind)
-- Data: automation-ideas/ (JSON state, requirements artifacts)
-- Agents: Orchestrator, Refiner, Architect, Tester, Executor, Audit, Memory
-- Pipeline: INTAKE → DISCOVERY → BLUEPRINT → IMPLEMENTATION → UNIT_VERIFY → INTEGRATION → SYSTEM_VAL → HANDOVER → DONE`,
+    artifactFormat: ['spec.md', 'architecture.md', 'tests.md'],
+    intakeFile: '.wysiwyg/ideas.md',
+    agents: ['Architect', 'Tester', 'Executor'],
+    promptContext: `This project is a modern web application with:
+- Backend: api/ (REST API server)
+- Frontend: src/ (React 19, Vite, Tailwind)
+- Requirements: .wysiwyg/ (spec artifacts, ideas backlog)
+- Agents: Architect, Tester, Executor
+- Pipeline: INTAKE → DISCOVERY → BLUEPRINT → IMPLEMENTATION → VERIFY → DONE`,
   },
   generic: {
     name: 'generic',

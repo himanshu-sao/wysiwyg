@@ -1,13 +1,20 @@
 # wysiwyg — Project Brief
 
 > **This is the single, self-contained description of what wysiwyg is, why it exists,
-> how it works, what's built, what's next, and the scope lines we hold.** Read this first
-> in any new session. It is the durable "pitch"; for live status/roadmap see
-> [`README.md`](README.md) (shared understanding + doc-map), [`TODO.md`](TODO.md)
-> (Phase 1 shipped; Phase 2 next), and [`GAP_AUDIT.md`](GAP_AUDIT.md) (live code-vs-roadmap audit).
+> how it works, what's built, what's next, the current code-vs-roadmap status, the
+> scope lines we hold, and the known doc-contradictions an AI must not propagate.**
+> Read this first in any new session. It is the durable "pitch" *and* the consolidated
+> authoritative narrative — it absorbed the framing that previously lived separately in
+> `README.md` (shared understanding, doc-map, contradictions) and `GAP_AUDIT.md` (live
+> status + pending + endpoints).
+>
+> For the live roadmap + the folded audit/MVP appendices see
+> [`TODO.md`](TODO.md); for setup + API reference see
+> [`ai-ui-editor/README.md`](ai-ui-editor/README.md); for the v2.0 north star see
+> [`VISION.md`](VISION.md).
 >
 > *Last updated: 2026-07-05. If this file and another doc disagree, this file +
-> `README.md` + `TODO.md` are the authoritative trio; the other doc is stale.*
+> `TODO.md` are the authoritative pair; the other doc is stale.*
 
 ---
 
@@ -53,11 +60,24 @@ conventions, turn vague intent into a precise instruction"), with two delivery s
 - It feeds a **downstream AI agent or human** that already knows how to process that
   backlog. wysiwyg hands off; it does not apply the change itself.
 
+### The three north-star use cases (the original intent)
+1. **UI critique & iteration** — right-click a card/component → "this doesn't look good,
+   suggest options" → multiple design options → pick one → applied.
+2. **Add functionality (described as a spec)** — right-click a button → "this should call
+   an API to get the result" → Export mode captures *what* should change, not the diff.
+3. **Add new UI (described as a spec)** — right-click empty space → "add a button here
+   that exports the view as PDF" → Export mode writes the spec for later.
+
+> Use cases 2 and 3 are **Export-mode** in the built system: wysiwyg captures intent and
+> writes a structured spec into the project's backlog, rather than generating functional
+> code (which is **Edit-mode scope today: CSS/visual single-file only**). Functional /
+> multi-file / new-component generation is deferred to the vision ([`VISION.md`](VISION.md)).
+
 ---
 
 ## 4. Multi-project is core — not a Phase 2 add-on
 
-wysiwyg is **not "the antikythera tool."** It is a general-purpose, multi-project tool.
+wysiwyg is a general-purpose, multi-project tool — not tied to any one target project.
 
 - You tell wysiwyg which project you're in by **typing that project's on-disk path.**
 - wysiwyg inspects it (`package.json`/`pyproject.toml`, directory scan), learns its
@@ -67,19 +87,17 @@ wysiwyg is **not "the antikythera tool."** It is a general-purpose, multi-projec
   (Shipped in P1-0, `e9d2b91` — the `window.location.origin` URL placeholder is gone. Routes
   fall back to `DEFAULT_PROJECT_ROOT` when no project is registered for the origin.)
 
-**`antikythera` is the first concrete profile we built against — an *example*, the first
-instance, NOT the purpose.** Anywhere a doc says "antikythera," read "the first registered
-example project." If wysiwyg ever becomes wysiwyg-for-antikythera-only, the vision failed.
+The `example` profile is the first concrete profile shipped alongside `generic` — it demonstrates a real project configuration with backend/frontend directories, agents, and pipeline stages. It is **not** the purpose of wysiwyg; it's a template to show what a profile can describe.
 
 Built-in profiles today (both real, in `middleware/src/config/project-profiles.ts`):
-- **`antikythera`** — FastAPI + React 19 + Vite + Tailwind + Python 3.9; URLs `localhost:5173`/`:8006`;
-  backend `api/`, frontend `ui/src/`, requirements `automation-ideas/`; intake
-  `automation-ideas/ideas.md`; artifacts `spec.md`/`architecture.md`/`tests.md`/`execution_report.md`.
+- **`example`** — React 19 + Vite + Tailwind + TypeScript; URLs `localhost:5173`/`:8006`;
+  backend `api/`, frontend `src/`; intake `.wysiwyg/ideas.md`; artifacts `spec.md`/`architecture.md`/`tests.md`;
+  agents `Architect`/`Tester`/`Executor`; pipeline `INTAKE → DISCOVERY → BLUEPRINT → IMPLEMENTATION → VERIFY → DONE`.
 - **`generic`** — React + Vite; `localhost:*`; frontend `src/`; intake `TODO.md`; artifact `spec.md`.
 
 A profile defines: tech stack, directory structure, artifact format, intake file, known
 agent roles (for multi-agent target projects), and a `promptContext` string injected into
-prompts.
+prompts. See [`ai-ui-editor/PROJECT_PROFILE.md`](ai-ui-editor/PROJECT_PROFILE.md).
 
 ---
 
@@ -122,7 +140,8 @@ The details that make this not-toy:
 ### ✅ Done and verified against code
 - **MVP (MVP-01…19):** right-click menu, element capture, sourcemap resolution, NVIDIA NIM
   AI (`meta/llama-3.1-70b-instruct` default — **real, not mock**), validate-before-write,
-  git auto-commit, one-click undo, HMR.
+  git auto-commit, one-click undo, HMR. (Acceptance criteria for each MVP-XX are preserved
+  in the "MVP spec of record" appendix of [`TODO.md`](TODO.md).)
 - **Post-MVP hardening (P1–P10):** apply-flow fix (P3), Zod/path validation + git/undo
   `projectRoot` fix (P4), DiffValidator TypeScript-API rewrite (P6), real sourcemaps (P7),
   real token streaming (P8), XSS sanitization (P9), docs sync (P10).
@@ -134,7 +153,7 @@ The details that make this not-toy:
 - **P1-0 — Project Registry (user-typed disk path)** — shipped `e9d2b91`. The user types an
   absolute on-disk path; wysiwyg validates a project marker on disk (`GET /api/files/probe-root`),
   persists the registry in `chrome.storage.local` keyed by origin (per-origin active project +
-  global override), and that path is the authoritative `projectRoot` everywhere it used
+  global override), and that path is the authoritative `projectRoot` everywhere it used to
   `window.location.origin`. Plumbed popup → background → content script. Tested that the
   registered path — not the origin URL — reaches `/api/files/write`.
 - **P1-6 — File Export (write spec into the active project's backlog)** — shipped `acb45ab`.
@@ -142,26 +161,55 @@ The details that make this not-toy:
   `- [ID-XXX] {title} | Priority: {Priority}`) + creates `requirements/{ID-XXX}/spec.md`,
   per the active profile's conventions, via `PathSanitizer` + `GitManager` as one atomic git
   commit (undoable via `/api/git/undo`). ID format: `ID-001`…`ID-999`, then `ID-1000`
-  (3-digit zero-padded, verified against the real antikythera repo). Priority + title:
+  (3-digit zero-padded, verified against the example profile). Priority + title:
   AI-suggested, user-overridable in popup.
 
 ### Confirmed HTTP endpoints (code, today)
 `/api/ai/edit` · `/api/ai/edit/stream` · `/api/ai/export-requirements` · `/api/files/validate` ·
-`/api/files/write` · `/api/files/probe-root` (P1-0) · `/api/files/append-ideas` (P1-6) ·
-`/api/git/undo` · (WS `/ws/connect`). All shipped.
+`/api/files/write` · `/api/files/read` · `/api/files/probe-root` (P1-0) ·
+`/api/files/append-ideas` (P1-6) · `/api/git/undo` · (WS `/ws/connect`). All shipped.
 
 ---
 
-## 7. The north star (what "diverting" would mean)
+## 7. Current code-vs-roadmap status
+
+**Phase 1 (Requirements Bridge) is feature-complete and test-pinned** — **221 tests
+passing** (144 middleware + 77 extension), both packages `tsc --noEmit` clean, the
+extension builds. **There are 0 open code blockers.**
+
+The follow-up fixes that prior audits flagged as drift/minor are all resolved with guard
+tests, and a doc-consistency guard (`docSync.test.ts`) pins the consolidated doc set so
+the narrative can't silently re-drift to describe shipped work as future:
+
+- **Type-mirror drift** — both `shared/types.ts` reconciled to lockstep; `typesMirror.test.ts` (4) pins it.
+- **Hardcoded project-label strings** — popup/background labels are dynamic (`${projectLabel}`, `${intakeLabel}`); no hardcoded project-specific strings in user-facing labels.
+- **Model list proliferation** — consolidated into `AVAILABLE_MODELS` (single `readonly string[]` in `OpencodeClient.ts`); `validateConfig()` rejects an unknown `NVIDIA_MODEL` at boot (fail-fast); `OpencodeClient.models.test.ts` (9) keeps the `ai-ui-editor/README.md` table in lockstep.
+- **Dual sanitization approaches** — `sanitizeFilePath` hardened to segment-wise traversal removal and documented as a *coherence heuristic*; `PathSanitizer.safeFilePath` remains the authoritative `path.resolve()`-based security boundary (defense in depth). `ResponseParser.test.ts` (+6) pins it.
+
+### Explicitly deferred (non-blocking, not required for Phase 1)
+- **DevTools panel wiring** — `extension/devtools/` has a full React panel that listens for
+  `edit-applied` / `edit-undone` messages, but the popup doesn't broadcast them, so the
+  panel never receives history. *Not blocking; consider wiring in Phase 2.*
+- **Export-mode streaming** — Edit mode streams via `/api/ai/edit/stream`; Export yields a
+  single spec, so streaming adds little value. *Deferred, not pursued.*
+- **E2E test** — no E2E harness exists yet (would need a running browser + a temp git project). The unit/integration coverage for P1-0/P1-6 + the prompt/registry paths is complete.
+
+**Next milestone: Phase 2** — a richer profile system on top of the P1-0 registry
+(`P2-1` schema, `P2-2` loader driven by the registry, `P2-3` selection UX, `P2-4`
+per-profile output customization). See [`TODO.md`](TODO.md).
+
+---
+
+## 8. The north star (what "diverting" would mean)
 
 The v2.0 vision — *deliberately aspirational*, intentionally unreached, kept as a screen to
-reach toward (full text in [`VISION_REQUIREMENTS.md`](VISION_REQUIREMENTS.md)):
-framework-agnostic functional diffs, new component creation, backend integration,
-multi-file coordination, test generation; human-in-the-loop refinement, real-time preview,
-confidence scoring, branch-based testing; multi-modal (voice, screenshot→code, markup);
-collaboration (PR-style approvals, shared sessions, change history); deployment (staging
-deploys, A/B, canaries, rollback); multiple AI backends; security/compliance scanning;
-ecosystem (plugin marketplace, IDE integration, CLI companion).
+reach toward (full text in [`VISION.md`](VISION.md)): framework-agnostic functional diffs,
+new component creation, backend integration, multi-file coordination, test generation;
+human-in-the-loop refinement, real-time preview, confidence scoring, branch-based testing;
+multi-modal (voice, screenshot→code, markup); collaboration (PR-style approvals, shared
+sessions, change history); deployment (staging deploys, A/B, canaries, rollback); multiple
+AI backends; security/compliance scanning; ecosystem (plugin marketplace, IDE integration,
+CLI companion).
 
 **Why keep it:** it tells us *why* we're doing Phase 1. **Why not chase it:** functional /
 multi-file / backend / voice are all explicitly out of MVP scope. If in doubt about scope,
@@ -169,12 +217,12 @@ the answer is almost always "not yet — that's vision."
 
 ---
 
-## 8. Scope guardrails — lines we hold (regressions to push back on)
+## 9. Scope guardrails — lines we hold (regressions to push back on)
 
 1. **Edit mode = CSS/visual only, single-file.** Functional/multi-file/new-components = future.
-2. **Multi-project via user-registered disk path.** Not auto-wire-to-antikythera-forever;
+2. **Multi-project via user-registered disk path.** Not auto-wire-to-one-project;
    not provider-side-only profiles. The user registers; that path is authoritative.
-3. **antikythera = example, always.** Any "build wysiwyg for antikythera" framing is a regression.
+3. **Built-in profiles are examples, not the purpose.** Any framing that ties wysiwyg to a single specific target project is a regression.
 4. **No live coupling to a target project's internal pipeline in Phase 1.** Export writes
    *files a human could paste by hand* (an `ideas.md` line + a `spec.md`). We deliberately do
    **not** touch `pipeline-state.json` or call the target's internal API. That's Phase 3.
@@ -187,44 +235,40 @@ the answer is almost always "not yet — that's vision."
 
 ---
 
-## 9. Known contradictions an AI must not propagate
+## 10. Known contradictions an AI must not propagate
 
-1. **antikythera: example vs purpose** — `memory/antikythera-integration-vision.md` *used to*
-   frame it as the *purpose*; this brief + `TODO.md` + `README.md` say *example*, and the
-   memory file was rewritten to match. **Example is correct.**
-2. **Task count** — `MVP_REQUIREMENTS.md` defines 19 MVP tasks. **19 is correct** (the stale
-   `MVP_COMPLETE.md` that said "20" was deleted 2026-07-05).
+1. **Built-in profiles: examples, not the purpose** — The built-in profiles (`example`, `generic`)
+   are templates demonstrated in `ai-ui-editor/PROJECT_PROFILE.md` and `project-profiles.ts`.
+   Any framing that treats a specific built-in profile as wysiwyg's sole raison d'être is wrong.
+   wysiwyg is a general-purpose multi-project tool.
+2. **Task count** — the original MVP spec defined **19** MVP tasks (MVP-01…19). **19 is correct.**
+   (A stale celebratory doc that said "20" was deleted in the P1-7 cleanup.)
 3. **Real AI vs mock** — **Real NVIDIA NIM is correct** (`meta/llama-3.1-70b-instruct`, P10);
-   the mock is only the no-API-key fallback. (The stale `MVP_COMPLETE.md` that contradicted
-   itself on this was deleted 2026-07-05.)
+   the mock is only the no-API-key fallback.
 4. **`/api/files/append-ideas`** — **shipped** (`acb45ab`, P1-6), registered in `routes/files.ts`.
    Treat it as a live endpoint. (`/api/files/probe-root` likewise shipped with P1-0, `e9d2b91`.)
-5. **"Servers Running" tables** — the two docs that presented live server state as if always up
-   (`MVP_COMPLETE.md`, `PROJECT_STATUS.md`) were deleted 2026-07-05 (snapshot docs that aged
-   into contradiction). For how to run, use `ai-ui-editor/README.md` → Setup.
+5. **"Servers Running" tables** — two docs that once presented live server state as if always up
+   were deleted (snapshot docs that aged into contradiction). For how to run, use
+   [`ai-ui-editor/README.md`](ai-ui-editor/README.md) → Setup.
 
 ---
 
-## 10. Doc map (which file is authoritative for what)
+## 11. Doc map (which file is authoritative for what)
 
 | Doc | Role | Status |
 |-----|------|--------|
-| `PROJECT_BRIEF.md` (this file) | Self-contained pitch/brief | **Authoritative** |
-| `README.md` | Framing + shared understanding + index | **Authoritative** |
-| `TODO.md` | Phase 1 Requirements Bridge roadmap | **Authoritative** for the roadmap (Phase 1 shipped; Phase 2 next) |
-| `GAP_AUDIT.md` | Live code-vs-roadmap audit + pending work | **Authoritative** for current status |
-| `MVP_REQUIREMENTS.md` | The 2–3 week MVP spec (MVP-01…19) | **Superseded** — MVP shipped; intent only |
-| `VISION_REQUIREMENTS.md` | v2.0 north star | **Aspirational** |
-| `ai-ui-editor/README.md` | Setup + build + API reference | **Authoritative** for setup + API — updated to shipped state (P1-7) |
-| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (antikythera/generic) | **Authoritative** for profiles — updated to reflect registered paths (P1-0 shipped) |
+| `PROJECT_BRIEF.md` (this file) | Self-contained pitch + authoritative narrative + live status | **Authoritative** |
+| `README.md` | Slim front-door index | **Authoritative** (index) |
+| `TODO.md` | Phase 1 record + Phase 2–4 roadmap **+ folded audit + MVP-spec-of-record appendices** | **Authoritative** for the roadmap |
+| `VISION.md` | v2.0 north star | **Aspirational** |
+| `ai-ui-editor/README.md` | Setup + build + API reference | **Authoritative** for setup + API |
+| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (`example` + `generic` profiles) | **Authoritative** for profiles |
 | `ai-ui-editor/sample-project/README.md` | Vite scaffold boilerplate | 3-line pointer header identifies it as the wysiwyg target app |
-| `memory/antikythera-integration-vision.md` | Repo memory: capability applied to multi-project targets | **Authoritative** — rewritten to "antikythera = first example" |
-| `PROJECT_DETAILS.md` | Pre-MVP feasibility draft (2026-07-02) | **Historical** — wrong about AI backend/endpoints/scope; correction banner on the file |
-| *Deleted (P1-7, 2026-07-05)* | `ai-ui-editor/POSTMVP_TODO.md`, `ai-ui-editor/PROJECT_STATUS.md`, `ai-ui-editor/MVP_COMPLETE.md`, `ai-ui-editor/middleware/src/config.ts`, `ai-ui-editor/shared/types.ts`, `TODO.proposed.md` | Snapshot/legacy/duplicate artifacts that had drifted into contradiction; their roles are covered by `ai-ui-editor/README.md` + `TODO.md` + this brief. Do not reintroduce. |
+| *Folded (2026-07-05 consolidation)* | `PROJECT_DETAILS.md` (pre-MVP draft, wrong on load-bearing points; its 3 use cases already lived here in §3), `GAP_AUDIT.md` (live status folded into §7 here; audit detail into the `TODO.md` audit appendix), `MVP_REQUIREMENTS.md` (MVP-01…19 + API contracts folded into the `TODO.md` MVP appendix), `VISION_REQUIREMENTS.md` (→ renamed `VISION.md`) | Snapshot/legacy/duplicate artifacts whose roles are now covered by the surviving docs. Do not reintroduce. |
 
 ---
 
-## 11. In one breath
+## 12. In one breath
 
 An **AI prompt generator that can see your running UI and knows your project's conventions**,
 with two outputs — apply a diff now (Edit) or write a structured spec into your project's
@@ -237,4 +281,4 @@ Everything beyond that is deliberately deferred.
 
 ---
 
-*Authored 2026-07-04; updated 2026-07-05. Keep in sync with `README.md` + `TODO.md`; the live roadmap lives there.*
+*Authored 2026-07-04; updated 2026-07-05 (consolidation: absorbed README framing + GAP_AUDIT live status + PROJECT_DETAILS use cases). Keep in sync with `TODO.md`; the live roadmap + folded appendices live there.*

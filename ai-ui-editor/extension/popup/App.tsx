@@ -386,9 +386,9 @@ const App: React.FC = () => {
   // On success the endpoint returns the generated ID + specPath for confirmation.
   async function handleExport() {
     const projectName = activeProject()?.displayName || 'this project';
-    const intakeLabel = activeProject()?.profileName === 'antikythera'
-      ? 'automation-ideas/ideas.md'
-      : 'TODO.md';
+    const intakeLabel = activeProject()?.profileName === 'example'
+      ? '.wysiwyg/ideas.md'
+      : 'ideas.md';
     if (!confirm(`Export this specification (${exportPriority} priority) to ${projectName}'s ${intakeLabel}?`)) return;
 
     const root = effectiveProjectRoot();
@@ -489,11 +489,11 @@ const App: React.FC = () => {
   // P1-2: Mode-specific title and description
   const isExportMode = mode === 'requirements-export';
   // P1-0: dynamic labels driven by the active registered project (defaults to
-  // a generic name when nothing is registered — no more hardcoded "antikythera").
+  // a generic name when nothing is registered).
   const activeProj = activeProject();
   const projectLabel = activeProj?.displayName || 'project';
-  const intakeLabel = (activeProj && activeProj.profileName === 'antikythera')
-    ? 'automation-ideas/ideas.md'
+  const intakeLabel = (activeProj && activeProj.profileName === 'example')
+    ? '.wysiwyg/ideas.md'
     : 'ideas.md';
 
   return (

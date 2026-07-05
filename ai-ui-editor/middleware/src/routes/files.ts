@@ -64,7 +64,7 @@ const AppendIdeasRequestSchema = z.object({
   element: z.object({}).passthrough().optional(),
   instruction: z.string(),
   projectRoot: z.string(),
-  projectProfile: z.enum(['antikythera', 'generic']).optional(),
+  projectProfile: z.enum(['example', 'generic']).optional(),
 });
 
 /** P1-6: regex that matches `ID-(\d+)` in any context (intake file line or dir name). */

@@ -376,7 +376,7 @@ sequenceDiagram
 
 | Phase | Timeline | Description |
 |-------|----------|-------------|
-| MVP | Completed | See MVP_REQUIREMENTS.md - basic visual editing |
+| MVP | Completed | See the "MVP spec of record" appendix in [`TODO.md`](TODO.md) - basic visual editing |
 | Alpha | 3-4 months | Limited functional changes, small teams testing |
 | Beta | 6-8 months | Full frontend capabilities, beta enterprise customers |
 | v1.0 | 12 months | First stable release, cloud hosting available |

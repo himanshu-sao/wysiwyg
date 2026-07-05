@@ -15,25 +15,25 @@ describe('PromptTemplates - Requirements Export', () => {
   const mockContext: EditContext = {
     url: 'http://localhost:5173',
     framework: 'react',
-    projectRoot: '/Users/test/antikythera',
+    projectRoot: '/Users/test/example',
     sourceFile: 'ui/src/components/Button.tsx',
     sourceCode: 'export const Button = () => <button className="btn-primary">Click me</button>;',
     scriptUrl: '/src/components/Button.tsx',
   };
 
   describe('getRequirementsPrompt', () => {
-    it('should include project context for antikythera profile', () => {
+    it('should include project context for example profile', () => {
       const prompt = getRequirementsPrompt(
         mockElement,
         'Add a refresh button that polls Jira every 5 minutes',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
-      expect(prompt).toContain('antikythera');
-      expect(prompt).toContain('FastAPI');
+      expect(prompt).toContain('example');
+      expect(prompt).toContain('REST API');
       expect(prompt).toContain('React 19');
-      expect(prompt).toContain('multi-agent');
+      expect(prompt).toContain('Pipeline');
     });
 
     it('should include element context', () => {
@@ -55,7 +55,7 @@ describe('PromptTemplates - Requirements Export', () => {
         mockElement,
         instruction,
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
       expect(prompt).toContain(instruction);
@@ -66,7 +66,7 @@ describe('PromptTemplates - Requirements Export', () => {
         mockElement,
         'Test instruction',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
       expect(prompt).toContain('"spec":');
@@ -80,24 +80,24 @@ describe('PromptTemplates - Requirements Export', () => {
         mockElement,
         'Test instruction',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
       expect(prompt).toContain('api/');
-      expect(prompt).toContain('ui/src/');
-      expect(prompt).toContain('automation-ideas/');
+      expect(prompt).toContain('src/');
+      expect(prompt).toContain('.wysiwyg/');
     });
 
-    it('should include agent list for antikythera', () => {
+    it('should include agent list for example', () => {
       const prompt = getRequirementsPrompt(
         mockElement,
         'Test instruction',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
-      expect(prompt).toContain('Orchestrator');
-      expect(prompt).toContain('Memory');
+      expect(prompt).toContain('Architect');
+      expect(prompt).toContain('Executor');
     });
 
     it('should use generic profile context for generic profile', () => {
@@ -150,7 +150,7 @@ describe('PromptTemplates - Requirements Export', () => {
         mockElement,
         'Test',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
 
       expect(prompt).toContain('## Guidelines');
@@ -167,7 +167,7 @@ describe('PromptTemplates - Requirements Export', () => {
         mockElement,
         'Test',
         mockContext,
-        PROFILES.antikythera
+        PROFILES.example
       );
       expect(prompt).toContain('"title"');
       expect(prompt).toContain('**title**');

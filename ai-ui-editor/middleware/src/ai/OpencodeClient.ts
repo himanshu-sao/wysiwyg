@@ -401,7 +401,7 @@ export function validateConfig(): { model: string } {
 }
 
 /**
- * P1-3: Generate requirements export for antikythera integration
+ * P1-3: Generate requirements export for the active project
  * @param element - Element context from the browser
  * @param instruction - User's natural language instruction
  * @param context - Project and source code context

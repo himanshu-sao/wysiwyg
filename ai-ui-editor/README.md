@@ -5,7 +5,7 @@ A Chrome extension + local middleware that serves as an **AI-driven prompt gener
 - **Edit mode** — AI generates a code diff (CSS/visual today) and applies it to source with validate-before-write, git auto-commit, and one-click undo.
 - **Export mode** — AI generates a structured spec and writes it back into the target project's own backlog conventions (e.g. `ideas.md` + `requirements/ID-XXX/spec.md`) for a downstream AI/human to act on.
 
-**Multi-project is core:** the user registers a project by its on-disk path; wysiwyg learns its structure/conventions (via a Project Profile System) and persists it. `antikythera` is the first example profile — not the purpose of wysiwyg. See the root [`README.md`](README.md) and [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the full framing, and [`TODO.md`](TODO.md) for the active roadmap (Requirements Bridge Phase 1).
+**Multi-project is core:** the user registers a project by its on-disk path; wysiwyg learns its structure/conventions (via a Project Profile System) and persists it. The built-in `example` and `generic` profiles demonstrate what profiles can describe — they are templates, not the purpose of wysiwyg. See the root [`README.md`](README.md) and [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the full framing, and [`TODO.md`](TODO.md) for the active roadmap.
 
 ## AI Integration
 
@@ -122,7 +122,7 @@ ai-ui-editor/
 │   │   │   ├── PromptTemplates.ts     # edit + requirements (getRequirementsPrompt) prompts
 │   │   │   └── ResponseParser.ts
 │   │   ├── config/            # Project Profile System (P1-1)
-│   │   │   └── project-profiles.ts    # built-in antikythera + generic profiles, detect/getProfile
+│   │   │   └── project-profiles.ts    # built-in example + generic profiles, detect/getProfile
 │   │   └── shared/types.ts    # mirrored with extension/shared/types.ts — keep in lockstep
 │   ├── __tests__/             # Vitest tests (e.g. ProjectProfiles.test.ts, PromptTemplates.requirements.test.ts, appendIdeas.test.ts, probeRoot.test.ts)
 │   └── package.json
@@ -369,7 +369,7 @@ against the registered `projectRoot`; rejects any path that escapes it.
   edgeCases: string[];
   instruction: string;
   projectRoot: string;                  // the user-registered on-disk path (P1-0), NOT origin
-  projectProfile?: 'antikythera' | 'generic';
+  projectProfile?: 'example' | 'generic';
 }
 ```
 **Response:**
@@ -382,7 +382,7 @@ against the registered `projectRoot`; rejects any path that escapes it.
   error?: string;
 }
 ```
-ID format (antikythera profile, verified): `ID-001`…`ID-999` (3-digit zero-padded), then
+ID format (example profile, verified): `ID-001`…`ID-999` (3-digit zero-padded), then
 `ID-1000` (4-digit). Idempotent — re-running the same export does not silently duplicate
 (same-ID collision is detected and rejected).
 
@@ -392,7 +392,7 @@ Revert the last git commit.
 
 ## Current scope (MVP, deliberate — not permanent limitations)
 
-These are scope *choices* for the current phase (see [`TODO.md`](TODO.md) Phase 1 and [`VISION_REQUIREMENTS.md`](VISION_REQUIREMENTS.md) for the deferred north star):
+These are scope *choices* for the current phase (see [`TODO.md`](TODO.md) Phase 1 and [`../VISION.md`](../VISION.md) for the deferred north star):
 
 - **Edit mode is CSS/visual only**: no functional code modifications (event handlers, API calls, new components) in Edit mode. (Export mode *describes* functional intent as a spec instead.)
 - **Single-file edits**: each Edit-mode change modifies one file (multi-file coordination is deferred).

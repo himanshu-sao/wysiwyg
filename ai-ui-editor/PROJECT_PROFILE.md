@@ -20,18 +20,18 @@ The Project Profile System allows wysiwyg to understand and work with different 
 
 ## Built-in Profiles
 
-### antikythera
+### example
 
 | Field | Value |
 |-------|-------|
 | **URLs** | `localhost:5173`, `localhost:8006` |
-| **Tech Stack** | FastAPI, React 19, Vite, Tailwind, Python 3.9 |
+| **Tech Stack** | React 19, Vite, Tailwind, TypeScript |
 | **Backend** | `api/` |
-| **Frontend** | `ui/src/` |
-| **Requirements** | `automation-ideas/` |
-| **Artifacts** | `spec.md`, `architecture.md`, `tests.md`, `execution_report.md` |
-| **Intake File** | `automation-ideas/ideas.md` |
-| **Agents** | Orchestrator, Refiner, Architect, Tester, Executor, Audit, Memory |
+| **Frontend** | `src/` |
+| **Requirements** | `.wysiwyg/` |
+| **Artifacts** | `spec.md`, `architecture.md`, `tests.md` |
+| **Intake File** | `.wysiwyg/ideas.md` |
+| **Agents** | Architect, Tester, Executor |
 
 ### generic
 
@@ -55,7 +55,7 @@ When you right-click a UI element, wysiwyg automatically detects the project pro
 import { detectProfile } from './config/project-profiles';
 
 const profile = detectProfile('http://localhost:5173');
-// Returns: antikythera profile
+// Returns: example profile
 ```
 
 > ✅ **Auto-detection by URL is one input; the registered disk path is authoritative.**
@@ -74,7 +74,7 @@ The profile's `promptContext` is injected into AI prompts:
 ```typescript
 import { getProfile } from './config/project-profiles';
 
-const profile = getProfile('antikythera');
+const profile = getProfile('example');
 const prompt = `
 ${profile.promptContext}
 
@@ -88,7 +88,7 @@ ${profile.promptContext}
 When exporting requirements, the profile tells wysiwyg where to write:
 
 ```typescript
-const profile = getProfile('antikythera');
+const profile = getProfile('example');
 const outputPath = `${projectRoot}/${profile.directories.requirements}/spec.md`;
 ```
 
@@ -183,7 +183,7 @@ interface ProjectProfile {
 import { getProfile } from './config/project-profiles';
 import { getRequirementsPrompt } from './ai/PromptTemplates';
 
-const profile = getProfile('antikythera');
+const profile = getProfile('example');
 
 const prompt = `
 You are a requirements engineer for the ${profile.name} project.

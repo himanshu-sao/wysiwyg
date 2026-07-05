@@ -7,7 +7,7 @@ metadata:
 
 > **Reframed 2026-07-04.** This memory originally framed wysiwyg as "built for antikythera"
 > (antikythera = the *purpose*). That framing is a **regression** — corrected here and in
-> [`README.md`](README.md) / [`TODO.md`](TODO.md) / [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+> [[README.md](../README.md)] / [[TODO.md](../TODO.md)] / [[PROJECT_BRIEF.md](../PROJECT_BRIEF.md)].
 > **antikythera is project #1 — the first example profile, not the purpose of wysiwyg.**
 > Read "antikythera" below as "the first registered example project"; generalise to any
 > user-registered project. See the authoritative trio for the current framing.
@@ -20,7 +20,7 @@ the first concrete project this was validated against: when working on it, it wa
 tell an AI precisely what needed to change and where — so it became the first instance of
 the general "project bridge" capability.
 
-## Current State (as of 2026-07-05 — Phase 1 shipped; see [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live commit-grounded audit and [`TODO.md`](TODO.md) for the roadmap)
+## Current State (as of 2026-07-05 — Phase 1 shipped; see [[TODO.md](../TODO.md)] for the roadmap and live audit appendix)
 
 ### wysiwyg capabilities (ai-ui-editor)
 - **Right-click UI editing**: Chrome extension captures DOM + context, sends to AI, applies CSS/visual edits (Edit mode).
@@ -29,7 +29,7 @@ the general "project bridge" capability.
 - **Auto-commit + one-click undo**, HMR.
 - **NVIDIA NIM** AI (`meta/llama-3.1-70b-instruct` default — **real, not mock**; P10).
 - **Middleware**: Fastify on `localhost:3000`.
-- **Project Profile System** (P1-1): built-in `antikythera` + `generic` profiles in `middleware/src/config/project-profiles.ts`.
+- **Project Profile System** (P1-1): built-in `example` + `generic` profiles in `middleware/src/config/project-profiles.ts`.
 - **Export mode** (P1-3): `POST /api/ai/export-requirements` generates a structured spec.
 
 ### antikythera (the first example target project)
@@ -51,7 +51,7 @@ the general "project bridge" capability.
 
 ## The track: Requirements Bridge — Phase 1 ✅ shipped
 
-See [`TODO.md`](TODO.md) for the authoritative roadmap and [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live audit. Summary:
+See [[TODO.md](../TODO.md)] for the authoritative roadmap. Summary:
 
 - **P1-0 (Project Registry — user-typed disk path)** ✅ shipped `e9d2b91`. User types an
   on-disk path; wysiwyg validates a project marker on disk (`/api/files/probe-root`),
@@ -77,17 +77,18 @@ Direct, live handoff to a target project's pipeline (e.g. a `POST /api/ideas/ups
 ## "Files to Modify for MVP" — ✅ DONE (Phase 1 shipped end-to-end)
 
 This table was the original to-do list for the Requirements Bridge. All items have shipped
-(P1-1…P1-5 + P1-0 `e9d2b91` + P1-6 `acb45ab`). Phase 1 is feature-complete; see [`TODO.md`](TODO.md)
-for the Phase 2 roadmap and [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live audit.
+(P1-1…P1-5 + P1-0 `e9d2b91` + P1-6 `acb45ab`). Phase 1 is feature-complete; see [[TODO.md](../TODO.md)]
+for the Phase 2 roadmap. The folded audit appendix in TODO.md records the P1-7 doc-sync
+consolidation; the folded MVP spec-of-record appendix preserves the original MVP-01…19
+acceptance criteria (formerly `MVP_REQUIREMENTS.md`).
 
 | File (original plan) | Status | Note |
 |----------------------|--------|------|
 | `ai-ui-editor/extension/content-script.ts` context menu | ✅ | Export context-menu item added (P1-2); `projectRoot` is now the registered on-disk path (P1-0) |
 | `ai-ui-editor/middleware/src/routes/ai.ts` `/export-requirements` | ✅ | P1-3, `ai.ts` |
 | `ai-ui-editor/middleware/src/ai/PromptTemplates.ts` `getRequirementsPrompt()` | ✅ | P1-4 (priority + title flow included) |
-| `ai-ui-editor/MVP_REQUIREMENTS.md` Phase 1 requirements | ➖ | `MVP_REQUIREMENTS.md` is now superseded (MVP shipped); Phase 1 lives in `TODO.md` instead |
 | `extension/shared/types.ts` ↔ `middleware/src/shared/types.ts` mirrored `RequirementsExport` type | ✅ | Mirrored across both (A stray `ai-ui-editor/shared/types.ts` copy was removed in P1-7 cleanup; the live pair is intact.) |
 
 ---
 
-*Reframed 2026-07-04 from the original "build wysiwyg for antikythera" vision to "wysiwyg multi-project tool — antikythera = first example." Updated 2026-07-05 to reflect shipped Phase 1 (P1-0/P1-6). See [[antikythera-is-example]] harness memory and [[GAP_AUDIT.md]] for the live audit.*
+*Reframed 2026-07-04 from the original "build wysiwyg for antikythera" vision to "wysiwyg multi-project tool — antikythera = first example." Updated 2026-07-05 to reflect shipped Phase 1 (P1-0/P1-6). The live audit and MVP spec-of-record now live as appendices in `TODO.md` (folded from the former `GAP_AUDIT.md` and `MVP_REQUIREMENTS.md`).*

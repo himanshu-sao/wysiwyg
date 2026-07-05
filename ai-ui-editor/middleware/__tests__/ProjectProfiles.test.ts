@@ -3,9 +3,9 @@ import { detectProfile, getProfile, PROFILES } from '../src/config/project-profi
 
 describe('ProjectProfiles', () => {
   describe('PROFILES constant', () => {
-    it('should have antikythera profile', () => {
-      expect(PROFILES.antikythera).toBeDefined();
-      expect(PROFILES.antikythera.name).toBe('antikythera');
+    it('should have example profile', () => {
+      expect(PROFILES.example).toBeDefined();
+      expect(PROFILES.example.name).toBe('example');
     });
 
     it('should have generic profile', () => {
@@ -13,18 +13,18 @@ describe('ProjectProfiles', () => {
       expect(PROFILES.generic.name).toBe('generic');
     });
 
-    it('should have correct antikythera configuration', () => {
-      const profile = PROFILES.antikythera;
+    it('should have correct example configuration', () => {
+      const profile = PROFILES.example;
       expect(profile.urlPatterns).toContain('localhost:5173');
       expect(profile.urlPatterns).toContain('localhost:8006');
-      expect(profile.techStack).toContain('FastAPI');
       expect(profile.techStack).toContain('React 19');
+      expect(profile.techStack).toContain('TypeScript');
       expect(profile.directories.backend).toBe('api/');
-      expect(profile.directories.frontend).toBe('ui/src/');
-      expect(profile.directories.requirements).toBe('automation-ideas/');
-      expect(profile.intakeFile).toBe('automation-ideas/ideas.md');
-      expect(profile.agents).toContain('Orchestrator');
-      expect(profile.agents).toContain('Memory');
+      expect(profile.directories.frontend).toBe('src/');
+      expect(profile.directories.requirements).toBeUndefined();
+      expect(profile.intakeFile).toBe('.wysiwyg/ideas.md');
+      expect(profile.agents).toContain('Architect');
+      expect(profile.agents).toContain('Executor');
     });
 
     it('should have correct generic configuration', () => {
@@ -37,14 +37,14 @@ describe('ProjectProfiles', () => {
   });
 
   describe('detectProfile', () => {
-    it('should detect antikythera from localhost:5173', () => {
+    it('should detect example from localhost:5173', () => {
       const profile = detectProfile('http://localhost:5173');
-      expect(profile.name).toBe('antikythera');
+      expect(profile.name).toBe('example');
     });
 
-    it('should detect antikythera from localhost:8006', () => {
+    it('should detect example from localhost:8006', () => {
       const profile = detectProfile('http://localhost:8006');
-      expect(profile.name).toBe('antikythera');
+      expect(profile.name).toBe('example');
     });
 
     it('should detect generic from other localhost ports', () => {
@@ -64,7 +64,7 @@ describe('ProjectProfiles', () => {
 
     it('should match exact host patterns', () => {
       const profile = detectProfile('http://localhost:5173');
-      expect(profile.name).toBe('antikythera');
+      expect(profile.name).toBe('example');
       expect(profile.urlPatterns).toContain('localhost:5173');
     });
 
@@ -77,9 +77,9 @@ describe('ProjectProfiles', () => {
   });
 
   describe('getProfile', () => {
-    it('should return antikythera profile by name', () => {
-      const profile = getProfile('antikythera');
-      expect(profile.name).toBe('antikythera');
+    it('should return example profile by name', () => {
+      const profile = getProfile('example');
+      expect(profile.name).toBe('example');
       expect(profile.directories.backend).toBe('api/');
     });
 
@@ -93,10 +93,10 @@ describe('ProjectProfiles', () => {
       expect(profile.name).toBe('generic');
     });
 
-    it('should return promptContext for antikythera', () => {
-      const profile = getProfile('antikythera');
-      expect(profile.promptContext).toContain('FastAPI');
-      expect(profile.promptContext).toContain('multi-agent');
+    it('should return promptContext for example', () => {
+      const profile = getProfile('example');
+      expect(profile.promptContext).toContain('REST API');
+      expect(profile.promptContext).toContain('React 19');
       expect(profile.promptContext).toContain('Pipeline');
     });
 
@@ -108,8 +108,8 @@ describe('ProjectProfiles', () => {
   });
 
   describe('ProjectProfile schema', () => {
-    it('antikythera should have all required fields', () => {
-      const profile = PROFILES.antikythera;
+    it('example should have all required fields', () => {
+      const profile = PROFILES.example;
       // Required fields
       expect(profile.name).toBeDefined();
       expect(profile.urlPatterns).toBeDefined();
@@ -117,7 +117,7 @@ describe('ProjectProfiles', () => {
       expect(profile.directories).toBeDefined();
       expect(profile.artifactFormat).toBeDefined();
       expect(profile.promptContext).toBeDefined();
-      // Optional fields that antikythera has
+      // Optional fields that example has
       expect(profile.intakeFile).toBeDefined();
       expect(profile.agents).toBeDefined();
     });
@@ -134,7 +134,7 @@ describe('ProjectProfiles', () => {
     });
 
     it('artifactFormat should be an array of markdown files', () => {
-      expect(PROFILES.antikythera.artifactFormat).toEqual(
+      expect(PROFILES.example.artifactFormat).toEqual(
         expect.arrayContaining(['spec.md', 'architecture.md', 'tests.md'])
       );
       expect(PROFILES.generic.artifactFormat).toEqual(

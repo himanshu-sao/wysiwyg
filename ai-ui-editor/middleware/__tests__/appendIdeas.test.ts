@@ -136,16 +136,16 @@ describe('appendRequirements (P1-6 atomic export)', () => {
       edgeCases: [],
       instruction: 'Add foo',
       projectRoot: dir,
-      projectProfile: 'antikythera', // use the antikythera profile (automation-ideas/)
+      projectProfile: 'example', // use the example profile (.wysiwyg/)
     });
 
     expect(result.success).toBe(true);
     expect(result.id).toBe('ID-001');
-    expect(result.specPath).toBe(path.resolve(dir, 'automation-ideas/requirements/ID-001/spec.md'));
+    expect(result.specPath).toBe(path.resolve(dir, '.wysiwyg/requirements/ID-001/spec.md'));
 
-    // Verify the intake file was appended correctly (antikythera profile →
-    // intakeFile = automation-ideas/ideas.md).
-    const ideas = await fs.readFile(path.join(dir, 'automation-ideas', 'ideas.md'), 'utf-8');
+    // Verify the intake file was appended correctly (example profile →
+    // intakeFile = .wysiwyg/ideas.md).
+    const ideas = await fs.readFile(path.join(dir, '.wysiwyg', 'ideas.md'), 'utf-8');
     expect(ideas).toContain('ID-001');
     expect(ideas).toContain('Add the Foo feature');
     expect(ideas).toContain('Priority: High');
@@ -175,15 +175,15 @@ describe('appendRequirements (P1-6 atomic export)', () => {
   it('generates successive IDs on repeated exports (each run gets next ID)', async () => {
     const dir = await setupProject();
 
-    // All exports use antikythera profile so the requirements dir is
-    // automation-ideas/requirements/ (stable dir-retrieval guarantees consistent
+    // All exports use example profile so the requirements dir is
+    // .wysiwyg/requirements/ (stable dir-retrieval guarantees consistent
     // ID scanning across runs).
 
     const r1 = await appendRequirements({
       spec: '# A\n', title: 'First', priority: 'Medium',
       architectureHints: [], testScenarios: [], edgeCases: [],
       instruction: 'First', projectRoot: dir,
-      projectProfile: 'antikythera',
+      projectProfile: 'example',
     });
     expect(r1.success).toBe(true);
     expect(r1.id).toBe('ID-001');
@@ -192,7 +192,7 @@ describe('appendRequirements (P1-6 atomic export)', () => {
       spec: '# B\n', title: 'Second', priority: 'Low',
       architectureHints: [], testScenarios: [], edgeCases: [],
       instruction: 'Second', projectRoot: dir,
-      projectProfile: 'antikythera',
+      projectProfile: 'example',
     });
     expect(r2.success).toBe(true);
     expect(r2.id).toBe('ID-002');
@@ -201,7 +201,7 @@ describe('appendRequirements (P1-6 atomic export)', () => {
       spec: '# C\n', title: 'Third', priority: 'High',
       architectureHints: [], testScenarios: [], edgeCases: [],
       instruction: 'Third', projectRoot: dir,
-      projectProfile: 'antikythera',
+      projectProfile: 'example',
     });
     expect(r3.success).toBe(true);
     expect(r3.id).toBe('ID-003');
@@ -244,14 +244,14 @@ describe('appendRequirements (P1-6 atomic export)', () => {
       architectureHints: [],
       testScenarios: [],
       edgeCases: [],
-      instruction: 'Implement the gizmo subsystem for antikythera',
+      instruction: 'Implement the gizmo subsystem for example',
       projectRoot: dir,
-      projectProfile: 'antikythera',
+      projectProfile: 'example',
     });
     expect(result.success).toBe(true);
-    // antikythera profile: intakeFile = automation-ideas/ideas.md
-    const ideas = await fs.readFile(path.join(dir, 'automation-ideas', 'ideas.md'), 'utf-8');
-    expect(ideas).toContain('Implement the gizmo subsystem for antikythera');
+    // example profile: intakeFile = .wysiwyg/ideas.md
+    const ideas = await fs.readFile(path.join(dir, '.wysiwyg', 'ideas.md'), 'utf-8');
+    expect(ideas).toContain('Implement the gizmo subsystem for example');
   });
 
   it('creates the intake file when it does not exist', async () => {

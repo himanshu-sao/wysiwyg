@@ -62,7 +62,7 @@ Generate 2-3 distinct CSS/styling options that address the user's request. Each 
 
 /**
  * P1-3: Prompt template for requirements export
- * Generates a structured specification for antikythera-style pipelines
+ * Generates a structured specification for the active project's pipeline
  */
 export function getRequirementsPrompt(
   element: ElementContext,
