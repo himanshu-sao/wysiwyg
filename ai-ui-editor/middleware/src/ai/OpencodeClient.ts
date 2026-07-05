@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { ElementContext, EditContext, EditOption } from '../shared/types';
-import { getEditPrompt } from './PromptTemplates';
+import { getEditPrompt, getRequirementsPrompt } from './PromptTemplates';
 import { parseEditResponse, extractJsonFromMarkdown, toEditOptions, sanitizeFilePath } from './ResponseParser';
+import type { ProjectProfile } from '../config/project-profiles';
 
 /**
  * NVIDIA NIM API Configuration
@@ -353,4 +354,95 @@ export async function listAvailableModels(): Promise<string[]> {
     console.error('[NvidiaNIM] Failed to list models:', error.message);
     return [];
   }
+}
+
+/**
+ * P1-3: Generate requirements export for antikythera integration
+ * @param element - Element context from the browser
+ * @param instruction - User's natural language instruction
+ * @param context - Project and source code context
+ * @param profile - Project profile for context-aware generation
+ * @returns Requirements export with spec, architecture hints, test scenarios, edge cases
+ */
+export async function generateRequirementsExport(
+  element: ElementContext,
+  instruction: string,
+  context: EditContext,
+  profile: ProjectProfile
+): Promise<{
+  spec: string;
+  architectureHints: string[];
+  testScenarios: string[];
+  edgeCases: string[];
+}> {
+  const prompt = getRequirementsPrompt(element, instruction, context, profile);
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      // Check if API key is configured
+      if (!process.env.NVIDIA_API_KEY || process.env.NVIDIA_API_KEY === '') {
+        console.warn('[NvidiaNIM] NVIDIA_API_KEY not set, using mock requirements');
+        return {
+          spec: `# Specification: ${instruction}\n\n## Overview\nMock specification for testing purposes.`,
+          architectureHints: ['src/components/TodoComponent.tsx'],
+          testScenarios: ['Should render component', 'Should handle user input'],
+          edgeCases: ['Empty state handling', 'Error state display'],
+        };
+      }
+
+      const completion = await nvidiaNim.chat.completions.create({
+        model: DEFAULT_MODEL,
+        max_tokens: 4096,
+        temperature: 0.7,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a requirements engineer for software projects. You respond with structured JSON containing specifications, architecture hints, test scenarios, and edge cases.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        response_format: { type: 'json_object' },
+      });
+
+      const textContent = completion.choices[0]?.message?.content;
+
+      if (!textContent || !textContent.trim()) {
+        throw new Error('Empty response from NVIDIA NIM API');
+      }
+
+      const jsonContent = extractJsonFromMarkdown(textContent);
+      const parsed = JSON.parse(jsonContent);
+
+      return {
+        spec: parsed.spec || 'No specification generated',
+        architectureHints: Array.isArray(parsed.architectureHints) ? parsed.architectureHints : [],
+        testScenarios: Array.isArray(parsed.testScenarios) ? parsed.testScenarios : [],
+        edgeCases: Array.isArray(parsed.edgeCases) ? parsed.edgeCases : [],
+      };
+    } catch (error: any) {
+      const isRetryable =
+        error.message?.includes('rate limit') ||
+        error.message?.includes('overloaded') ||
+        error.message?.includes('timeout') ||
+        error.status === 429 ||
+        error.status === 503 ||
+        error.status === 408;
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        console.warn(`[Attempt ${attempt}/${MAX_RETRIES}] Retryable error, waiting ${RETRY_DELAY_MS}ms...`, error.message);
+        await sleep(RETRY_DELAY_MS * attempt);
+        continue;
+      }
+
+      if (attempt === MAX_RETRIES) {
+        console.error(`[NvidiaNIM] All ${MAX_RETRIES} attempts failed:`, error.message);
+        throw new Error(`Failed to generate requirements after ${MAX_RETRIES} attempts: ${error.message}`);
+      }
+    }
+  }
+
+  throw new Error('Failed to generate requirements export');
 }

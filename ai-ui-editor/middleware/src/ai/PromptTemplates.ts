@@ -1,4 +1,5 @@
 import { ElementContext, EditContext } from '../shared/types';
+import type { ProjectProfile } from '../config/project-profiles';
 
 export function getEditPrompt(
   element: ElementContext,
@@ -55,6 +56,70 @@ Generate 2-3 distinct CSS/styling options that address the user's request. Each 
       "type": "jsx"
     }
   ]
+}
+`;
+}
+
+/**
+ * P1-3: Prompt template for requirements export
+ * Generates a structured specification for antikythera-style pipelines
+ */
+export function getRequirementsPrompt(
+  element: ElementContext,
+  instruction: string,
+  context: EditContext,
+  profile: ProjectProfile
+): string {
+  const htmlSnippet = element.html.length > 500
+    ? `${element.html.substring(0, 500)}...`
+    : element.html;
+
+  const classes = element.classNames.join(' ');
+  const hierarchy = element.hierarchy.join(' > ');
+
+  return `
+You are a requirements engineer for the ${profile.name} project.
+
+## Project Context
+${profile.promptContext}
+
+## Element Context
+- HTML: ${htmlSnippet}
+- Classes: ${classes}
+- Hierarchy: ${hierarchy}
+- Framework: ${context.framework}
+- URL: ${context.url}
+- Originating Script: ${context.scriptUrl || 'unknown'}
+
+## User Instruction
+"${instruction}"
+
+## Task
+Generate a structured specification for implementing this feature/requirement. The specification will be used by AI agents in a multi-agent pipeline to implement the change.
+
+## Output Format (JSON)
+{
+  "spec": "# Specification\\n\\n## Overview\\nClear description...\\n\\n## Requirements\\n1. Functional requirements...\\n\\n## Edge Cases\\nEdge cases...\\n\\n## Acceptance Criteria\\nCriteria...",
+  "architectureHints": ["src/components/NewComponent.tsx", "api/routes/newRoute.ts"],
+  "testScenarios": ["Should render correctly", "Should handle user input", "Should error gracefully"],
+  "edgeCases": ["Empty state", "Network failure", "Invalid input"]
+}
+
+## Guidelines
+1. **spec**: A complete markdown specification with Overview, Requirements (numbered, testable), Edge Cases, and Acceptance Criteria
+2. **architectureHints**: File paths that will likely need to be created or modified (use project's directory conventions: ${JSON.stringify(profile.directories)})
+3. **testScenarios**: Specific test cases covering happy path, error cases, and edge cases
+4. **edgeCases**: Unusual scenarios the implementation should handle
+
+## Project-Specific Notes
+- Artifact format: ${profile.artifactFormat.join(', ')}
+- Backend directory: ${profile.directories.backend || 'N/A'}
+- Frontend directory: ${profile.directories.frontend || 'N/A'}
+- Requirements directory: ${profile.directories.requirements || 'N/A'}
+${
+  profile.agents && profile.agents.length > 0
+    ? `- Agents involved: ${profile.agents.join(', ')}`
+    : ''
 }
 `;
 }

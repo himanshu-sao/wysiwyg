@@ -13,18 +13,31 @@ const MIDDLEWARE_HTTP_URL = 'http://localhost:3000';
 // Create the "Edit with AI" context menu on right-click.
 // (contextMenus belongs to the service worker, NOT the content script —
 //  see POSTMVP_TODO.md P2. Previously this lived in content-script.ts and failed.)
+// P1-2: Added second menu item for "Export to Antikythera TODO" (requirements mode)
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'ai-ui-editor',
     title: 'Edit with AI',
     contexts: ['all'],
   });
+  chrome.contextMenus.create({
+    id: 'ai-ui-editor-export',
+    title: 'Export to Antikythera TODO',
+    contexts: ['all'],
+  });
 });
 
 // On menu click, ask the content script (in the clicked tab) to capture the
 // element at the click coordinates — then store + show the popup.
+// P1-2: Distinguish mode based on which menu was clicked:
+// - 'ai-ui-editor' → css-edit mode (existing behavior)
+// - 'ai-ui-editor-export' → requirements-export mode (new)
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== 'ai-ui-editor' || !tab?.id) return;
+  if (!tab?.id) return;
+
+  const isExportMode = info.menuItemId === 'ai-ui-editor-export';
+  const isCssEditMode = info.menuItemId === 'ai-ui-editor';
+  if (!isExportMode && !isCssEditMode) return;
 
   try {
     // info.x/info.y are page coordinates of the click (present for non-link/
@@ -35,8 +48,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       data: { x, y },
     });
     if (results) {
-      tabState.set(tab.id, results);
-      chrome.runtime.sendMessage({ type: 'show-popup', data: results });
+      // Store mode in tab state for the popup to read
+      tabState.set(tab.id, {
+        ...results,
+        mode: isExportMode ? 'requirements-export' : 'css-edit',
+      });
+      chrome.runtime.sendMessage({
+        type: 'show-popup',
+        data: results,
+        mode: isExportMode ? 'requirements-export' : 'css-edit',
+      });
     }
   } catch (error) {
     console.error('Capture failed (is the content script loaded on this tab?):', error);

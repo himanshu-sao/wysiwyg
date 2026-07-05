@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { EditRequest, EditOption } from '../shared/types';
+import { EditRequest, EditOption, ExtensionMode } from '../shared/types';
 import { applyDiff } from '../shared/diff';
 import { resolveApplyBase } from '../shared/apply';
 import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
@@ -11,6 +11,14 @@ const App: React.FC = () => {
   const [instruction, setInstruction] = useState('');
   const [contextHint, setContextHint] = useState('');
   const [progress, setProgress] = useState('');
+  // P1-2: Track current mode (css-edit vs requirements-export)
+  const [mode, setMode] = useState<ExtensionMode>('css-edit');
+  // P1-5: Requirements export state
+  const [generatedSpec, setGeneratedSpec] = useState<string>('');
+  const [specEditable, setSpecEditable] = useState<string>('');
+  const [architectureHints, setArchitectureHints] = useState<string[]>([]);
+  const [testScenarios, setTestScenarios] = useState<string[]>([]);
+  const [edgeCases, setEdgeCases] = useState<string[]>([]);
   // P8: live token buffer. As the middleware streams real NIM deltas, we
   // accumulate them here so the user sees the JSON building up rather than a
   // single staged status line. Reset whenever a non-token stage arrives.
@@ -43,6 +51,7 @@ const App: React.FC = () => {
       switch (message.type) {
         case 'show-popup':
           setElementContext(message.data);
+          setMode(message.mode || 'css-edit'); // P1-2: Set mode from message
           updateContextHint(message.data);
           break;
         case 'server-response': {
@@ -60,6 +69,19 @@ const App: React.FC = () => {
                 .join('\n');
               setError(`Validation failed — not written:\n${msgs}`);
             }
+            break;
+          }
+          // P1-5: Check if this is a requirements export response
+          if (data.spec !== undefined) {
+            // Requirements export response
+            setGeneratedSpec(data.spec || '');
+            setSpecEditable(data.spec || '');
+            setArchitectureHints(data.architectureHints || []);
+            setTestScenarios(data.testScenarios || []);
+            setEdgeCases(data.edgeCases || []);
+            setLoading(false);
+            setProgress('');
+            setTokenBuffer('');
             break;
           }
           // Otherwise it's an AI edit-options response.
@@ -145,7 +167,10 @@ const App: React.FC = () => {
     setResolvedFilePath(undefined);
     setResolvedSourceCode(undefined);
     setTokenBuffer('');
-    setProgress('Sending request to AI...');
+
+    // P1-5: Different endpoints for different modes
+    const isExportMode = mode === 'requirements-export';
+    setProgress(isExportMode ? 'Generating specification...' : 'Sending request to AI...');
 
     const request: EditRequest = {
       element: elementContext.element,
@@ -153,15 +178,26 @@ const App: React.FC = () => {
       context: elementContext.context,
     };
 
-    // Use the streaming SSE endpoint so the popup can show progress (and, once
-    // the middleware streams real tokens, the first option renders faster).
-    chrome.runtime.sendMessage({
-      type: 'send-streaming-to-server',
-      data: {
-        endpoint: '/api/ai/edit/stream',
-        body: request,
-      },
-    });
+    if (isExportMode) {
+      // P1-5: Use requirements export endpoint (non-streaming for now)
+      chrome.runtime.sendMessage({
+        type: 'send-to-server',
+        data: {
+          endpoint: '/api/ai/export-requirements',
+          body: request,
+        },
+      });
+    } else {
+      // Use the streaming SSE endpoint so the popup can show progress (and, once
+      // the middleware streams real tokens, the first option renders faster).
+      chrome.runtime.sendMessage({
+        type: 'send-streaming-to-server',
+        data: {
+          endpoint: '/api/ai/edit/stream',
+          body: request,
+        },
+      });
+    }
   }
 
   async function handleApply(option: EditOption) {
@@ -197,6 +233,34 @@ const App: React.FC = () => {
     );
 
     pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
+  }
+
+  // P1-5: Handle export requirements to ideas.md
+  async function handleExport() {
+    if (!confirm('Export this specification to antikythera ideas.md?')) return;
+
+    setLoading(true);
+    setError('');
+
+    // For now, just show a success message - actual export will be implemented in P1-6
+    chrome.runtime.sendMessage({
+      type: 'send-to-server',
+      data: {
+        endpoint: '/api/files/append-ideas',
+        body: {
+          spec: specEditable,
+          architectureHints,
+          testScenarios,
+          edgeCases,
+          element: elementContext?.element,
+          instruction,
+        },
+      },
+    });
+
+    // Pending implementation - P1-6 will implement the actual export
+    setLoading(false);
+    setError('Export feature coming in P1-6 - specification saved locally for now');
   }
 
   // P7 / MVP-18: user manually picks a source file when sourcemap resolution
@@ -260,25 +324,47 @@ const App: React.FC = () => {
     );
   }
 
+  // P1-2: Mode-specific title and description
+  const isExportMode = mode === 'requirements-export';
+
   return (
     <div className="p-6 w-96">
-      <h1 className="text-lg font-bold mb-4">AI UI Editor</h1>
+      <h1 className="text-lg font-bold mb-4">
+        {isExportMode ? 'Export to Antikythera' : 'AI UI Editor'}
+      </h1>
+      {/* P1-2: Mode indicator */}
+      <div className="mb-3 flex items-center gap-2">
+        <span className={`text-xs px-2 py-1 rounded ${
+          isExportMode
+            ? 'bg-purple-100 text-purple-700'
+            : 'bg-indigo-100 text-indigo-700'
+        }`}>
+          {isExportMode ? 'Requirements Export' : 'CSS Edit'}
+        </span>
+      </div>
       <p className="text-sm text-gray-500 mb-4">{contextHint}</p>
 
       <form onSubmit={handleSubmit} className="mb-4">
         <textarea
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
-          placeholder="Describe the visual change you want..."
+          placeholder={isExportMode
+            ? "What should this do? Describe the functionality..."
+            : "Describe the visual change you want..."
+          }
           className="w-full p-2 border rounded mb-2 text-sm"
           rows={3}
         />
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-indigo-600 text-white py-2 rounded font-medium disabled:bg-gray-400"
+          className={`w-full py-2 rounded font-medium disabled:bg-gray-400 ${
+            isExportMode
+              ? 'bg-purple-600 text-white hover:bg-purple-700'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}
         >
-          {loading ? 'Generating options...' : 'Generate Options'}
+          {loading ? 'Generating...' : (isExportMode ? 'Generate Spec' : 'Generate Options')}
         </button>
       </form>
 
@@ -356,6 +442,77 @@ const App: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* P1-5: Requirements Export UI */}
+      {isExportMode && generatedSpec && (
+        <div className="space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Generated Specification</h2>
+
+          {/* Editable spec textarea */}
+          <div className="border rounded p-3">
+            <label className="text-xs font-medium text-gray-600 mb-1 block">
+              Specification (editable)
+            </label>
+            <textarea
+              value={specEditable}
+              onChange={(e) => setSpecEditable(e.target.value)}
+              className="w-full p-2 border rounded text-xs font-mono bg-gray-50"
+              rows={12}
+            />
+          </div>
+
+          {/* Architecture hints */}
+          {architectureHints.length > 0 && (
+            <div className="border rounded p-3 bg-blue-50">
+              <h3 className="text-xs font-semibold text-blue-800 mb-2">
+                📁 Files to Modify
+              </h3>
+              <ul className="text-xs text-blue-700 space-y-1">
+                {architectureHints.map((hint, i) => (
+                  <li key={i} className="font-mono">{hint}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Test scenarios */}
+          {testScenarios.length > 0 && (
+            <div className="border rounded p-3 bg-green-50">
+              <h3 className="text-xs font-semibold text-green-800 mb-2">
+                ✅ Test Scenarios
+              </h3>
+              <ul className="text-xs text-green-700 space-y-1">
+                {testScenarios.map((scenario, i) => (
+                  <li key={i}>• {scenario}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Edge cases */}
+          {edgeCases.length > 0 && (
+            <div className="border rounded p-3 bg-amber-50">
+              <h3 className="text-xs font-semibold text-amber-800 mb-2">
+                ⚠️ Edge Cases
+              </h3>
+              <ul className="text-xs text-amber-700 space-y-1">
+                {edgeCases.map((edgeCase, i) => (
+                  <li key={i}>• {edgeCase}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Export button */}
+          <button
+            onClick={handleExport}
+            disabled={loading}
+            className="w-full bg-purple-600 text-white py-2 rounded font-medium hover:bg-purple-700 disabled:bg-gray-400"
+          >
+            {loading ? 'Exporting...' : 'Export to ideas.md'}
+          </button>
         </div>
       )}
 

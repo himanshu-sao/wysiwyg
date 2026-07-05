@@ -1,7 +1,45 @@
 import { FastifyPluginAsync } from 'fastify';
-import { EditRequest, EditResponse, EditContext, ElementContext } from '../shared/types';
-import { generateEditOptions, generateEditOptionsStream } from '../ai/OpencodeClient';
+import { EditRequest, EditResponse, EditContext, ElementContext, RequirementsExportRequest, RequirementsExportResponse } from '../shared/types';
+import { generateEditOptions, generateEditOptionsStream, generateRequirementsExport } from '../ai/OpencodeClient';
+import { getProfile, detectProfile } from '../config/project-profiles';
 import { resolveSource } from '../services/SourcemapResolver';
+
+/**
+ * P7: enrich the edit context with the element's resolved source file/line/code
+ * via sourcemap. Returns the (possibly updated) context, a `needsFileSelection`
+ * flag, and the resolved source details for the popup.
+ */
+async function resolveContextSource(
+  element: ElementContext,
+  context: EditContext
+): Promise<{ context: EditContext; needsFileSelection: boolean; resolvedFilePath?: string; resolvedSourceCode?: string }> {
+  const attempted = !!context.scriptUrl && context.scriptUrl.trim().length > 0;
+  if (!attempted) {
+    return { context, needsFileSelection: false };
+  }
+
+  const resolved = await resolveSource(
+    context.scriptUrl,
+    context.generatedLine,
+    context.generatedColumn,
+    element.html,
+    { pageUrl: context.url, projectRoot: context.projectRoot }
+  );
+
+  const merged: EditContext = {
+    ...context,
+    sourceFile: resolved.sourceFile ?? context.sourceFile,
+    sourceLine: resolved.sourceLine ?? context.sourceLine,
+    sourceCode: resolved.sourceCode ?? context.sourceCode,
+  };
+
+  return {
+    context: merged,
+    needsFileSelection: !merged.sourceFile,
+    resolvedFilePath: resolved.sourceFile ?? undefined,
+    resolvedSourceCode: resolved.sourceCode ?? undefined,
+  };
+}
 
 const aiRoutes: FastifyPluginAsync = async (app) => {
   // Standard POST endpoint (non-streaming)
@@ -110,47 +148,50 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
-};
 
-/**
- * P7: enrich the edit context with the element's resolved source file/line/code
- * via sourcemap. Returns the (possibly updated) context, a `needsFileSelection`
- * flag, and the resolved source details for the popup.
- * - needsFileSelection: true ONLY when resolution was attempted (scriptUrl present)
- *   but failed, so the popup can offer MVP-18 manual file selection.
- * - resolvedFilePath/resolvedSourceCode: populated when resolution succeeds, so
- *   the popup can apply diffs correctly (P3 fix).
- */
-async function resolveContextSource(
-  element: ElementContext,
-  context: EditContext
-): Promise<{ context: EditContext; needsFileSelection: boolean; resolvedFilePath?: string; resolvedSourceCode?: string }> {
-  const attempted = !!context.scriptUrl && context.scriptUrl.trim().length > 0;
-  if (!attempted) {
-    return { context, needsFileSelection: false };
+  // P1-3: Export requirements endpoint for generating specs
+  app.post<{ Body: RequirementsExportRequest }, RequirementsExportResponse>(
+    '/export-requirements',
+  async (request, reply) => {
+    try {
+      const { element, instruction, context, projectProfile } = request.body;
+
+      // P1-3: Auto-detect profile if not specified
+      const profile = projectProfile
+        ? getProfile(projectProfile)
+        : detectProfile(context.url);
+
+      // P7: resolve source via sourcemap (same as edit endpoint)
+      const { context: resolvedContext, needsFileSelection, resolvedFilePath, resolvedSourceCode } = await resolveContextSource(element, context);
+
+      // Generate requirements export using AI
+      const result = await generateRequirementsExport(
+        element,
+        instruction,
+        resolvedContext,
+        profile
+      );
+
+      const response: RequirementsExportResponse = {
+        spec: result.spec,
+        architectureHints: result.architectureHints,
+        testScenarios: result.testScenarios,
+        edgeCases: result.edgeCases,
+      };
+
+      return reply.send(response);
+    } catch (error: any) {
+      console.error('Export requirements error:', error);
+      return reply.status(500).send({
+        spec: '',
+        architectureHints: [],
+        testScenarios: [],
+        edgeCases: [],
+        error: error.message || 'Failed to generate requirements export',
+      });
+    }
   }
-
-  const resolved = await resolveSource(
-    context.scriptUrl,
-    context.generatedLine,
-    context.generatedColumn,
-    element.html,
-    { pageUrl: context.url, projectRoot: context.projectRoot }
-  );
-
-  const merged: EditContext = {
-    ...context,
-    sourceFile: resolved.sourceFile ?? context.sourceFile,
-    sourceLine: resolved.sourceLine ?? context.sourceLine,
-    sourceCode: resolved.sourceCode ?? context.sourceCode,
-  };
-
-  return {
-    context: merged,
-    needsFileSelection: !merged.sourceFile,
-    resolvedFilePath: resolved.sourceFile ?? undefined,
-    resolvedSourceCode: resolved.sourceCode ?? undefined,
-  };
-}
+);
+};
 
 export default aiRoutes;
