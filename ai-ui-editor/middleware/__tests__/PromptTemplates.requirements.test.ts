@@ -1,0 +1,163 @@
+import { describe, it, expect, vi } from 'vitest';
+import { getRequirementsPrompt } from '../src/ai/PromptTemplates';
+import { ElementContext, EditContext } from '../shared/types';
+import { PROFILES } from '../src/config/project-profiles';
+
+describe('PromptTemplates - Requirements Export', () => {
+  const mockElement: ElementContext = {
+    html: '<button class="btn-primary">Click me</button>',
+    computedStyles: { color: 'rgb(255, 255, 255)', 'background-color': 'rgb(0, 123, 255)' },
+    classNames: ['btn-primary'],
+    hierarchy: ['button.btn-primary', 'div.container', 'body'],
+    eventListeners: ['click'],
+  };
+
+  const mockContext: EditContext = {
+    url: 'http://localhost:5173',
+    framework: 'react',
+    projectRoot: '/Users/test/antikythera',
+    sourceFile: 'ui/src/components/Button.tsx',
+    sourceCode: 'export const Button = () => <button className="btn-primary">Click me</button>;',
+    scriptUrl: '/src/components/Button.tsx',
+  };
+
+  describe('getRequirementsPrompt', () => {
+    it('should include project context for antikythera profile', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Add a refresh button that polls Jira every 5 minutes',
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain('antikythera');
+      expect(prompt).toContain('FastAPI');
+      expect(prompt).toContain('React 19');
+      expect(prompt).toContain('multi-agent');
+    });
+
+    it('should include element context', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Add functionality',
+        mockContext,
+        PROFILES.generic
+      );
+
+      expect(prompt).toContain('<button class="btn-primary">Click me</button>');
+      expect(prompt).toContain('btn-primary');
+      expect(prompt).toContain('button.btn-primary > div.container > body');
+    });
+
+    it('should include user instruction', () => {
+      const instruction = 'Add a refresh button that polls Jira every 5 minutes';
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        instruction,
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain(instruction);
+    });
+
+    it('should include output format specification', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test instruction',
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain('"spec":');
+      expect(prompt).toContain('"architectureHints":');
+      expect(prompt).toContain('"testScenarios":');
+      expect(prompt).toContain('"edgeCases":');
+    });
+
+    it('should include project-specific directory info', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test instruction',
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain('api/');
+      expect(prompt).toContain('ui/src/');
+      expect(prompt).toContain('automation-ideas/');
+    });
+
+    it('should include agent list for antikythera', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test instruction',
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain('Orchestrator');
+      expect(prompt).toContain('Memory');
+    });
+
+    it('should use generic profile context for generic profile', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test instruction',
+        mockContext,
+        PROFILES.generic
+      );
+
+      expect(prompt).toContain('A generic React/Vue/Svelte project');
+      expect(prompt).toContain('src/');
+    });
+
+    it('should truncate long HTML snippets', () => {
+      const longHtmlElement: ElementContext = {
+        ...mockElement,
+        html: '<div>'.repeat(100) + '</div>' + '<span>'.repeat(100),
+      };
+
+      const prompt = getRequirementsPrompt(
+        longHtmlElement,
+        'Test',
+        mockContext,
+        PROFILES.generic
+      );
+
+      // Should be truncated to 500 chars + "..."
+      expect(prompt).toContain('...');
+    });
+
+    it('should handle missing script URL gracefully', () => {
+      const contextWithoutScript: EditContext = {
+        ...mockContext,
+        scriptUrl: undefined,
+      };
+
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test',
+        contextWithoutScript,
+        PROFILES.generic
+      );
+
+      expect(prompt).toContain('unknown'); // For originating script
+    });
+
+    it('should include guidelines section', () => {
+      const prompt = getRequirementsPrompt(
+        mockElement,
+        'Test',
+        mockContext,
+        PROFILES.antikythera
+      );
+
+      expect(prompt).toContain('## Guidelines');
+      expect(prompt).toContain('**spec**:');
+      expect(prompt).toContain('**architectureHints**:');
+      expect(prompt).toContain('**testScenarios**:');
+      expect(prompt).toContain('**edgeCases**:');
+    });
+  });
+});
