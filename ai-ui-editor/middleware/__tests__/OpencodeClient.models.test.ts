@@ -119,3 +119,34 @@ describe('validateConfig() rejection semantics (P1-7)', () => {
     expect(() => guardAgainst(catalog, validateConfig().model)).not.toThrow();
   });
 });
+
+// The README claims "The middleware validates at startup that the configured
+// model is in the catalog (validateConfig() in OpencodeClient.ts)". That claim
+// is only true if the server entrypoint actually CALLS validateConfig() during
+// boot — otherwise the guard is dead code and a bad NVIDIA_MODEL silently
+// reaches the first AI request. These tests pin that wiring by inspecting
+// server.ts source text (cheap, no port): the import must be present, and
+// validateConfig() must run BEFORE app.listen so a bad model fails fast rather
+// than half-booting a server. The validateConfig() unit tests above already
+// prove the guard itself throws; these prove the boot path actually invokes it.
+describe('startup wiring — server.ts calls validateConfig() (P1-7)', () => {
+  const SERVER = path.resolve(__dirname, '..', 'src', 'server.ts');
+
+  it('server.ts imports validateConfig from OpencodeClient', async () => {
+    const src = await fs.readFile(SERVER, 'utf-8');
+    expect(src).toMatch(/from\s+['"]\.\/ai\/OpencodeClient['"]/);
+    expect(src).toMatch(/\bvalidateConfig\b/);
+  });
+
+  it('server.ts calls validateConfig() inside start() before app.listen', async () => {
+    const src = await fs.readFile(SERVER, 'utf-8');
+    // The fail-fast ordering matters: validate the model BEFORE binding the
+    // port, so a bad NVIDIA_MODEL never produces a half-booted server. We
+    // require validateConfig() to appear before the listen() call.
+    const validateIdx = src.indexOf('validateConfig()');
+    const listenIdx = src.indexOf('app.listen');
+    expect(validateIdx).toBeGreaterThan(-1);
+    expect(listenIdx).toBeGreaterThan(-1);
+    expect(validateIdx).toBeLessThan(listenIdx);
+  });
+});

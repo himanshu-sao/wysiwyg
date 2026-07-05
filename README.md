@@ -19,15 +19,16 @@ That instruction can take two shapes:
 ## Multi-project is core
 
 wysiwyg works across **multiple projects**. You tell wysiwyg which project you're in by
-giving it that project's path on disk; wysiwyg learns its structure and conventions and
-remembers the registry. One active project per session, used by both edit and export
-modes. (Project registration by user-typed disk path is tracked in [`TODO.md`](TODO.md) →
-P1-0; today the extension auto-detects a couple of built-in profiles by URL.)
+giving it that project's path on disk; wysiwyg validates it (a project marker on disk),
+learns its structure and conventions, and remembers the registry. One active project per
+session, used by both edit and export modes. (This Project Registry — P1-0 — shipped in
+`e9d2b91`; before it, the extension auto-detected a couple of built-in profiles by URL and
+used `window.location.origin` as the project root.)
 
 > **antikythera** is the first concrete project profile wysiwyg was built against — an
 > example, not the purpose of wysiwyg.
 
-## Shared understanding (checkpoint 2026-07-04)
+## Shared understanding (checkpoint 2026-07-05)
 
 This section is the single place where our reviewed, agreed understanding of the
 project lives — so anyone (human or AI) landing here knows what's true, what's stale,
@@ -58,27 +59,33 @@ wins.**
   capture, sourcemap resolution (commit `8dbb195`), NVIDIA NIM AI
   (`meta/llama-3.1-70b-instruct` default, **real AI — not mock**), validate-before-write,
   git auto-commit, one-click undo, HMR. ✅ Done.
-- **Post-MVP hardening** (`ai-ui-editor/POSTMVP_TODO.md` P1–P10): apply-flow fix (P3),
+- **Post-MVP hardening** (P1–P10): apply-flow fix (P3),
   Zod/path validation on `/write` `/validate` `/undo` (P4, commits `ab07b00`/`dcdf47b`),
   DiffValidator rewrite (P6, commit `dcdf47b`), sourcemaps (P7, `8dbb195`), real token
   streaming (P8, `dd97dee`), XSS sanitization (P9, `dd97dee`), docs sync (P10, `dd97dee`).
   ✅ P1–P10 done.
-- **Requirements Bridge — Phase 1** (the *active* work, see `TODO.md`):
+- **Requirements Bridge — Phase 1** (see `TODO.md`): shipped end-to-end — foundation *and*
+  the two capstones that were once blockers.
   - ✅ P1-1 Project profiles + URL detection — `middleware/src/config/project-profiles.ts`
     (built-in `antikythera` + `generic` profiles, `detectProfile`/`getProfile`).
   - ✅ P1-2 Extension context menu (second item, mode handling).
   - ✅ P1-3 Export endpoint `POST /api/ai/export-requirements` — `routes/ai.ts`.
-  - ✅ P1-4 Requirements prompt template — `PromptTemplates.getRequirementsPrompt`.
-  - ✅ P1-5 Popup export UI (spec preview, editable textarea, export button).
-  - 🔴 **P1-0 (Project Registry — user-typed disk path)** is the genuinely missing prerequisite.
-    Today `projectRoot = window.location.origin` (a URL, wrong for any file op); P1-0 makes
-    the user-registered on-disk path authoritative for both edit and export.
-  - 🔴 **P1-6 (File Export — write spec into the active project's backlog)** blocked on P1-0;
-    new endpoint `POST /api/files/append-ideas` + ideas.md/spec.md writes via `PathSanitizer` +
-    `GitManager`.
-- **Confirmed endpoints** (code): `/api/ai/edit`, `/api/ai/edit/stream`, `/api/ai/export-requirements`,
-  `/api/files/validate`, `/api/files/write`, `/api/git/undo`. (Note: `/api/files/append-ideas`
-  is P1-6 — planned, **not yet built**.)
+  - ✅ P1-4 Requirements prompt template — `PromptTemplates.getRequirementsPrompt`
+    (priority + title flow, AI-suggested and user-overridable).
+  - ✅ P1-5 Popup export UI (spec preview, editable textarea, priority + title, export button).
+  - ✅ **P1-0 (Project Registry — user-typed disk path)** — shipped (`e9d2b91`). The
+    user-registered on-disk path is now the authoritative `projectRoot` for both edit and
+    export (per-origin active project + global override, persisted in `chrome.storage.local`;
+    the `window.location.origin` URL placeholder is gone). Registration is gated by a project
+    marker on disk, validated by `GET /api/files/probe-root`.
+  - ✅ **P1-6 (File Export — write spec into the active project's backlog)** — shipped
+    (`acb45ab`). `POST /api/files/append-ideas` appends the profile intake line + creates
+    `requirements/{ID-XXX}/spec.md` as one atomic git commit (undoable via `/api/git/undo`),
+    routed through `PathSanitizer` + `GitManager`. ID format `ID-001`…`ID-999`, then `ID-1000`.
+- **Confirmed endpoints** (code): `/api/ai/edit`, `/api/ai/edit/stream`,
+  `/api/ai/export-requirements`, `/api/files/validate`, `/api/files/write`,
+  `/api/files/probe-root` (P1-0), `/api/files/append-ideas` (P1-6), `/api/git/undo`,
+  `WS /ws/connect`.
 
 ### Doc status map (which file is authoritative for what)
 
@@ -89,15 +96,12 @@ wins.**
 | Doc | Role | Status |
 |-----|------|--------|
 | `README.md` (this file) | Framing + shared understanding + index | **Authoritative** |
-| `TODO.md` | Phase 1 Requirements Bridge roadmap (P1-0, P1-6 active) | **Authoritative** for the roadmap |
+| `TODO.md` | Phase 1 Requirements Bridge roadmap | **Authoritative** for the roadmap (Phase 1 shipped; active = none in Phase 1) |
 | `MVP_REQUIREMENTS.md` | The 2–3 week MVP spec (MVP-01…19) | **Superseded** — MVP shipped; read for *intent*, not as to-do |
 | `VISION_REQUIREMENTS.md` | v2.0 north star (full-stack, voice, PRs, DB, monetization) | **Aspirational** — intentionally unreached |
-| `ai-ui-editor/README.md` | Setup + build + API reference | **Updated (P1-7 partial)** — now has Export mode, `/edit/stream`, `/export-requirements`, `config/`, `ResponseParser.ts`, tests, `devtools/`, reconciled models table, MVP-scope limitations; *verify against current code on next pass* (a couple of paths were added from git-status, not `ls`) |
-| `ai-ui-editor/POSTMVP_TODO.md` | P1–P10 completion log w/ commit hashes + Requirements Bridge section | Accurate to `dd97dee`; now supersedes its own stale "next" list (test counts flagged as stale) |
-| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (antikythera/generic) | Accurate; P1-0 forward-pointer added; "legacy config.ts" row flagged for verification |
-| `ai-ui-editor/PROJECT_STATUS.md` | Status snapshot | Stale (pre-P4/P6/P7/P10, missing Export/multi-project); stale-snapshot banner + "how to run" added; low-risk, fold into README eventually |
-| `ai-ui-editor/MVP_COMPLETE.md` | "MVP complete" celebration doc | **Stale + self-contradictory** (says "20 MVP tasks" vs spec's 19; claims AI is real *and* mock); correction banner added; candidate for deletion after P1-7 |
-| `ai-ui-editor/sample-project/README.md` | Vite scaffold boilerplate | 3-line pointer header added (now identifies as the wysiwyg target app); body is still the Vite scaffold README |
+| `ai-ui-editor/README.md` | Setup + build + API reference | **Authoritative** for setup + API — Export mode, `/edit/stream`, `/export-requirements`, `/probe-root` (P1-0), `/append-ideas` (P1-6), reconciled models table, MVP-scope limitations; updated to shipped state. |
+| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (antikythera/generic) | Accurate; updated to reflect that user-registered paths are selectable now (P1-0 shipped). |
+| `ai-ui-editor/sample-project/README.md` | Vite scaffold boilerplate | 3-line pointer header (identifies as the wysiwyg target app); body is the Vite scaffold README |
 | `memory/antikythera-integration-vision.md` | Repo memory: how wysiwyg's capability applies to multi-project targets | **Rewritten** — now "antikythera = first example" (was "antikythera = purpose"); no longer conflicts |
 | `TODO.proposed.md` | (was a near-duplicate of `TODO.md`) | **Deleted 2026-07-04** — only unique line was provably wrong ("root README is just `# wysiwyg`") |
 | `PROJECT_DETAILS.md` | Pre-MVP feasibility draft (2026-07-02) | **Historical** — wrong about AI backend (Opencode/Claude/Ollama vs real NVIDIA NIM), endpoints, and scope; correction banner added; read for original intent/north-star use cases only |
@@ -107,28 +111,34 @@ wins.**
 1. **antikythera: example vs purpose.** `TODO.md` + this README say "example." The repo
    memory `antikythera-integration-vision.md` *used to* say "purpose" — **rewritten 2026-07-04**
    to "antikythera = first example"; it no longer conflicts. **Example is correct.**
-2. **Task count.** `MVP_REQUIREMENTS.md` defines **19** MVP tasks; `MVP_COMPLETE.md` says
-   "All 20." **19 is correct.** (MVP_COMPLETE's own banner now flags this.)
-3. **Real AI vs mock.** `MVP_COMPLETE.md` line ~32 says "real AI (not mock)" but its own
-   line ~157/169 says "needs Opencode SDK / Mock AI." **Real NVIDIA NIM is correct** (P10).
-   (MVP_COMPLETE's banner flags this.)
-4. **`/api/files/append-ideas`** — lives in `TODO.md` P1-6 as **planned**. Do not treat it
-   as shipped until P1-6 lands in `routes/files.ts`. **Open question (unverified this
-   session):** does `popup/App.tsx` already call it / does `routes/files.ts` already
-   register it? If yes — drift to reconcile; if no — `TODO.md`'s "already targets
-   `/api/files/append-ideas`" line (line ~334) is stale. Resolve before quoting.
-5. **"Servers Running" tables** (`MVP_COMPLETE.md`, `PROJECT_STATUS.md`) presented live state
-   as if servers are up now. `PROJECT_STATUS.md` is rephrased to "how to run";
-   `MVP_COMPLETE.md`'s banner flags its table as non-live.
+2. **Task count.** `MVP_REQUIREMENTS.md` defines **19** MVP tasks. **19 is correct.** (The
+   stale `MVP_COMPLETE.md` that said "All 20" was deleted 2026-07-05.)
+3. **Real AI vs mock.** **Real NVIDIA NIM is correct** (`meta/llama-3.1-70b-instruct`,
+   P10). The mock is only the no-API-key fallback for testing. (The stale `MVP_COMPLETE.md`
+   that contradicted itself on this was deleted 2026-07-05.)
+4. **`/api/files/append-ideas`** — **shipped** (`acb45ab`, P1-6), registered in
+   `routes/files.ts`. Treat it as a live endpoint, not "planned." (`/api/files/probe-root`
+   likewise shipped with P1-0, `e9d2b91`.)
+5. **"Servers Running" tables** — the two docs that presented live server state as if
+   always up (`MVP_COMPLETE.md`, `PROJECT_STATUS.md`) were deleted 2026-07-05 (snapshot docs
+   that aged into contradiction). For how to run, use `ai-ui-editor/README.md` → Setup.
+
+> **Deleted docs (2026-07-05).** `ai-ui-editor/MVP_COMPLETE.md`,
+> `ai-ui-editor/POSTMVP_TODO.md`, `ai-ui-editor/PROJECT_STATUS.md`, and the legacy
+> `ai-ui-editor/middleware/src/config.ts` + `ai-ui-editor/shared/types.ts` were removed as
+> part of the P1-7 doc-sync — they were snapshot/legacy artifacts that had drifted into
+> contradiction. Their roles are covered by `ai-ui-editor/README.md` (setup + API),
+> `TODO.md` (roadmap), and the surviving `shared/types.ts` mirror. Do not reintroduce them.
 
 ### Decision (checkpoint)
 
 We are **on track** — the code advanced exactly as the roadmap said (MVP → P1–P10 hardening
-→ Requirements Bridge Phase 1). The drift is in the *docs*, not the build: a few files
-describe an older, antikythera-scoped, mock-AI, single-mode state. **No code rewrite. The
-cleanup is doc-only:** reconcile the stale files per the map above, fix the contradictions,
-keep `README.md` + `TODO.md` as the authoritative pair, salvage-then-delete the pure
-historical duplicates. The first new work item is **P1-0 (Project Registry)**.
+→ Requirements Bridge Phase 1, including the two former blockers P1-0 + P1-6, which shipped
+in `e9d2b91` + `acb45ab`). The doc drift that the 2026-07-04 checkpoint flagged is now
+reconciled: the narrative docs describe what shipped, the deleted snapshot/legacy docs are
+gone, and `README.md` + `TODO.md` remain the authoritative pair. **Phase 1 is feature-complete
+and test-pinned (221 tests).** The next milestone is Phase 2 — a richer profile system on top
+of the P1-0 registry (see `TODO.md`).
 
 > **New here? Read [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) first** — it's the self-contained
 > pitch (problem, both modes, multi-project, what's built, what's next, scope guardrails).
@@ -142,8 +152,8 @@ historical duplicates. The first new work item is **P1-0 (Project Registry)**.
 |-----|------------|
 | [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) | **Read first.** Self-contained project pitch + brief (portable across sessions) |
 | [`ai-ui-editor/README.md`](ai-ui-editor/README.md) | Setup, build, run, test, architecture, **API reference** — the source of truth for *how things are right now* |
-| [`ai-ui-editor/PROJECT_STATUS.md`](ai-ui-editor/PROJECT_STATUS.md) | Short status snapshot: what's implemented, what's next |
-| [`TODO.md`](TODO.md) | Roadmap / living task list (Phase 1: Requirements Bridge) |
+| [`TODO.md`](TODO.md) | Roadmap / living task list (Phase 1 shipped; Phase 2 next) |
+| [`GAP_AUDIT.md`](GAP_AUDIT.md) | Live code-vs-roadmap audit + pending work |
 | [`VISION_REQUIREMENTS.md`](VISION_REQUIREMENTS.md) | Historical v2.0 vision document (north star) |
 
 ## Quick start
@@ -151,15 +161,18 @@ historical duplicates. The first new work item is **P1-0 (Project Registry)**.
 See [`ai-ui-editor/README.md`](ai-ui-editor/README.md) for the full setup. In short:
 start the middleware (`cd ai-ui-editor/middleware && npm run dev`, localhost:3000) and
 a target dev server (e.g. `ai-ui-editor/sample-project`, localhost:5174), load the built
-extension from `ai-ui-editor/extension/dist` in Chrome, then right-click any UI element.
+extension from `ai-ui-editor/extension/dist` in Chrome, register/open a project, then
+right-click any UI element.
 
 ## Status
 
 The MVP (right-click → AI edit options → diff → validate → apply → git commit → HMR) is
-complete, along with the Export-mode UI and endpoint. The active work is the
-**Requirements Bridge** (Phase 1) — see [`TODO.md`](TODO.md) and
-[`ai-ui-editor/POSTMVP_TODO.md`](ai-ui-editor/POSTMVP_TODO.md).
+complete, along with Export mode end-to-end: project registry (P1-0, `e9d2b91`), structured
+spec generation (`/export-requirements`), and writing the spec into the active project's
+backlog (P1-6, `acb45ab`). **Requirements Bridge Phase 1 is feature-complete and test-pinned**
+(221 tests). The next milestone is **Phase 2** (richer profile system on the registry) — see
+[`TODO.md`](TODO.md) and [`GAP_AUDIT.md`](GAP_AUDIT.md).
 
 ---
 
-*Last updated: 2026-07-04*
+*Last updated: 2026-07-05*

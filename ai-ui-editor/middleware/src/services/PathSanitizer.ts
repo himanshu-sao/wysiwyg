@@ -6,7 +6,7 @@ import * as path from 'path';
  *
  * Why: the popup sends `file` (e.g. "src/components/Card.tsx") to
  * /api/files/write and /api/files/validate. Without this guard the route
- * could write anywhere the process can (POSTMVP_TODO.md P4).
+ * could write anywhere the process can (P4-git hardening).
  *
  * @param projectRoot - absolute path to the user's project
  * @param file - relative path within the project (e.g. "src/Card.tsx").

@@ -20,7 +20,7 @@ the first concrete project this was validated against: when working on it, it wa
 tell an AI precisely what needed to change and where — so it became the first instance of
 the general "project bridge" capability.
 
-## Current State (as of 2026-07-04, see [`ai-ui-editor/POSTMVP_TODO.md`](ai-ui-editor/POSTMVP_TODO.md) for the commit-grounded log)
+## Current State (as of 2026-07-05 — Phase 1 shipped; see [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live commit-grounded audit and [`TODO.md`](TODO.md) for the roadmap)
 
 ### wysiwyg capabilities (ai-ui-editor)
 - **Right-click UI editing**: Chrome extension captures DOM + context, sends to AI, applies CSS/visual edits (Edit mode).
@@ -45,26 +45,27 @@ the general "project bridge" capability.
 |------------------|---------------------|---------------|
 | Right-click element editing | requirements → TODO generation | ✅ Export mode (`/export-requirements`) generates the spec |
 | Single-file CSS/visual edits | multi-file coordinated changes | 🟡 Deferred (vision) — Edit mode is deliberately single-file CSS/visual today |
-| `projectRoot` = `window.location.origin` (URL) | needs the on-disk repo path | 🔴 **P1-0 (Project Registry)** fixes this — the active work item |
+| `projectRoot` = `window.location.origin` (URL) | needs the on-disk repo path | ✅ **P1-0 (Project Registry)** shipped (`e9d2b91`) — registered on-disk path is authoritative |
 | AI prompts for visual edits | architectural/functional prompts | ✅ `getRequirementsPrompt()` added (P1-4); visual-only is an Edit-mode scope choice |
 | One-click apply with validation | target project's own verification loop | 🟡 Phase 3 (live API bridge) — Phase 1 is file handoff only |
 
-## The active track: Requirements Bridge (Phase 1)
+## The track: Requirements Bridge — Phase 1 ✅ shipped
 
-See [`TODO.md`](TODO.md) for the authoritative roadmap. Summary:
+See [`TODO.md`](TODO.md) for the authoritative roadmap and [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live audit. Summary:
 
-- **P1-0 (Project Registry — user-typed disk path)** 🔴 — the genuinely missing capability.
-  User types an on-disk path; wysiwyg inspects it, persists a registry in
-  `chrome.storage.local`, and that path becomes the authoritative `projectRoot` for
-  both Edit and Export modes. **Prerequisite for P1-6.**
-- **P1-6 (File Export — write spec into the active project's backlog)** 🔴 — blocked on
-  P1-0. New `POST /api/files/append-ideas` appends the `ideas.md` line + creates
+- **P1-0 (Project Registry — user-typed disk path)** ✅ shipped `e9d2b91`. User types an
+  on-disk path; wysiwyg validates a project marker on disk (`/api/files/probe-root`),
+  persists a registry in `chrome.storage.local` (per-origin active project + global
+  override), and that path is the authoritative `projectRoot` for both Edit and Export.
+- **P1-6 (File Export — write spec into the active project's backlog)** ✅ shipped `acb45ab`.
+  `POST /api/files/append-ideas` appends the `ideas.md` line + creates
   `requirements/{ID-XXX}/spec.md` per the active profile, via `PathSanitizer` + `GitManager`,
-  atomic + idempotent. Does **not** touch `pipeline-state.json` (live pipeline coupling = Phase 3).
+  atomic + idempotent (one atomic git commit, undoable via `/api/git/undo`). Does **not**
+  touch `pipeline-state.json` (live pipeline coupling = Phase 3).
 
 ## Recommended Enhancement Path (general framing)
 
-### Phase 1: Project Bridge (file handoff) — *active*
+### Phase 1: Project Bridge (file handoff) — ✅ shipped
 Captures UI + intent → generates a structured spec → writes it into the target project's own backlog files (a human could paste by hand). No live coupling to the target's internal API. **antikythera = the first profile this is exercised against.**
 
 ### Phase 2: Project Profiles + Multi-Project Support — *next*
@@ -73,19 +74,20 @@ Matures the P1-0 registry into a richer profile system (`ProfileManager`, profil
 ### Phase 3: API Bridge (Full Integration) — *future, deferred*
 Direct, live handoff to a target project's pipeline (e.g. a `POST /api/ideas/upsert` **in the target project**, using its own `StateManager` — never writing its internal state files directly). Live pipeline coupling begins here; Phase 1 deliberately avoids it.
 
-## "Files to Modify for MVP" — ✅ DONE (was the original Phase 1 plan)
+## "Files to Modify for MVP" — ✅ DONE (Phase 1 shipped end-to-end)
 
-This table was the original to-do list for the Requirements Bridge. All items below have shipped
-(P1-1…P1-5); the remaining work is P1-0 (registry) and P1-6 (file write), tracked in [`TODO.md`](TODO.md).
+This table was the original to-do list for the Requirements Bridge. All items have shipped
+(P1-1…P1-5 + P1-0 `e9d2b91` + P1-6 `acb45ab`). Phase 1 is feature-complete; see [`TODO.md`](TODO.md)
+for the Phase 2 roadmap and [`GAP_AUDIT.md`](GAP_AUDIT.md) for the live audit.
 
 | File (original plan) | Status | Note |
 |----------------------|--------|------|
-| `ai-ui-editor/extension/content-script.ts` context menu | ✅ + 🔴 | Export context-menu item added (P1-2); `projectRoot = window.location.origin` placeholder still to be replaced by P1-0 |
+| `ai-ui-editor/extension/content-script.ts` context menu | ✅ | Export context-menu item added (P1-2); `projectRoot` is now the registered on-disk path (P1-0) |
 | `ai-ui-editor/middleware/src/routes/ai.ts` `/export-requirements` | ✅ | P1-3, `ai.ts` |
-| `ai-ui-editor/middleware/src/ai/PromptTemplates.ts` `getRequirementsPrompt()` | ✅ | P1-4 |
+| `ai-ui-editor/middleware/src/ai/PromptTemplates.ts` `getRequirementsPrompt()` | ✅ | P1-4 (priority + title flow included) |
 | `ai-ui-editor/MVP_REQUIREMENTS.md` Phase 1 requirements | ➖ | `MVP_REQUIREMENTS.md` is now superseded (MVP shipped); Phase 1 lives in `TODO.md` instead |
-| `shared/types.ts` `RequirementsExport` type | ✅ | Added ( mirrored across both `shared/types.ts` files) |
+| `extension/shared/types.ts` ↔ `middleware/src/shared/types.ts` mirrored `RequirementsExport` type | ✅ | Mirrored across both (A stray `ai-ui-editor/shared/types.ts` copy was removed in P1-7 cleanup; the live pair is intact.) |
 
 ---
 
-*Reframed 2026-07-04 from the original "build wysiwyg for antikythera" vision to "wysiwyg project-profile / requirements bridge — antikythera = first example." See [[antikythera-is-example]] harness memory.*
+*Reframed 2026-07-04 from the original "build wysiwyg for antikythera" vision to "wysiwyg multi-project tool — antikythera = first example." Updated 2026-07-05 to reflect shipped Phase 1 (P1-0/P1-6). See [[antikythera-is-example]] harness memory and [[GAP_AUDIT.md]] for the live audit.*

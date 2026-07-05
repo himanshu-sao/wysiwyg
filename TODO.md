@@ -1,7 +1,14 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-04 (framing rewrite — see "What changed in this revision")
+**Last revised**: 2026-07-05 (Phase 1 Requirements Bridge shipped — see "What landed")
+
+> **Status:** **Phase 1 (Requirements Bridge) is feature-complete and test-pinned**
+> (221 tests passing). The two former blockers shipped: **P1-0 Project Registry**
+> (`e9d2b91`) and **P1-6 File Export** (`acb45ab`). The Phase 1 sections below are kept
+> as a record of what was specified and what shipped; nothing in Phase 1 is active.
+> **The next real milestone is Phase 2** (richer profile system on the P1-0 registry) —
+> see `GAP_AUDIT.md` for the live code-vs-roadmap status.
 
 ---
 
@@ -16,7 +23,7 @@ turns a vague user intent into a high-quality instruction.
 
 Two output *shapes* of that same prompt-generation capability:
 - **Edit mode** — generate a code diff and apply it to the running project (already
-  implemented for CSS/visual edits; see `ai-ui-editor/POSTMVP_TODO.md` for the MVP baseline).
+  implemented for CSS/visual edits; see the MVP history in git for the baseline).
 - **Export mode** — generate a structured spec/TODO and write it back into *that
   project's own* backlog conventions, so a downstream AI agent (or human) can act on it.
 
@@ -32,22 +39,39 @@ registered project per session, used by both modes.**
 
 ---
 
-## What changed in this revision
+## What landed (2026-07-05)
+
+- **P1-0 Project Registry** — shipped `e9d2b91`. On-disk path registry
+  (`extension/shared/projectRegistry.ts`); `chrome.storage.local` persistence; per-origin
+  active project + global override; `GET /api/files/probe-root` validates a project marker
+  on disk; the registered on-disk path replaces `window.location.origin` as `projectRoot`.
+  Tests: ext `projectRegistry.test.ts` (30), mw `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9).
+- **P1-6 File Export** — shipped `acb45ab`. `POST /api/files/append-ideas` appends the
+  profile intake line + creates `requirements/{ID-XXX}/spec.md` in one atomic git commit via
+  `GitManager.writeFilesWithGit` (undoable via `/api/git/undo`). `generateNextId` 3-digit
+  zero-padded `ID-001`…`ID-999` then `ID-1000`. Priority + title flow export response →
+  popup → endpoint. Tests: `appendIdeas.test.ts` (15), `OpencodeClient.normalizePriority.test.ts` (6), +2 prompt tests.
+- **P1-7 doc-sync** (this pass) — narrative docs reconciled to "shipped"; stale
+  snapshot/legacy docs removed (`MVP_COMPLETE.md`, `POSTMVP_TODO.md`, `PROJECT_STATUS.md`,
+  `config.ts`, `extension/shared/types.ts`); a doc-consistency guard test pins the sync.
+- **P1-8 testing** — unit/integration for the prompt, `/append-ideas` (idempotency, ID
+  generation, traversal rejection, GitManager commit), and the registry all shipped. Only the
+  E2E test remains deferred (no E2E harness yet).
+
+## What changed in the previous revision (2026-07-04, kept for record)
 
 - **Framing**: rewritten from "wire wysiwyg to antikythera" to "AI-driven prompt
   generator with UI access; multi-project via user-registered disk paths." antikythera
   demoted from purpose → example project.
-- **New task P1-0 (Project Registration)**: captures the genuinely missing capability —
+- **New task P1-0 (Project Registration)**: captured the then-missing capability —
   user types a disk path, wysiwyg inspects it, persists a project registry, and that
   registered path becomes the authoritative `projectRoot` for both edit *and* export.
-  Today `projectRoot` is `window.location.origin` (a URL), which is wrong for any file op.
-  **P1-0 is a prerequisite for P1-6's path safety** (and arguably for the existing
-  edit flow to work against a real repo).
+  (Shipped 2026-07-05 as above.)
 - **P1-6 enriched** with the antikythera profile's `ideas.md` intake format (defined in
   `middleware/src/config/project-profiles.ts`), request/response schema, ID rule, and the
   `PathSanitizer` + `GitManager` reuse requirement. Priority becomes AI-suggested +
-  user-overridable (reopens P1-3/P1-4/P1-5 slightly). Destination root = the user-registered
-  disk path, **not** the dev-server `projectRoot`.
+  user-overridable. Destination root = the user-registered disk path, not the dev-server
+  `projectRoot`.
 - **Phases 2–4**: left intact (they age well); only their framing lines touched so they
   don't contradict the new model.
 
@@ -81,10 +105,13 @@ This keeps the TODO list fresh — only active work remains visible.
 
 ---
 
-## Phase 1: Requirements Bridge (MVP)
+## Phase 1: Requirements Bridge (MVP) ✅ shipped
 
 **Goal**: wysiwyg captures UI context + user intent → understands the target project →
 generates a structured spec → writes a TODO item back into that project's own backlog.
+
+> **Phase 1 is complete** (foundation P1-1…P1-5 + capstones P1-0 `e9d2b91` / P1-6 `acb45ab`).
+> The detail blocks below are kept as the spec of record. Active work resumes in Phase 2.
 
 ### Foundation (done — removed from active list; see git history)
 
@@ -94,47 +121,42 @@ generates a structured spec → writes a TODO item back into that project's own 
 - ✅ P1-4 Requirements prompt template — `PromptTemplates.getRequirementsPrompt` (folded into P1-3).
 - ✅ P1-5 Popup export UI — spec preview, editable textarea, hints/scenarios/edge-cases sections, export button, 17 tests.
 
-### P1-0: Project Registry (user-typed disk path) 🔴 NEW — prerequisite for P1-6
+### P1-0: Project Registry (user-typed disk path) ✅ shipped `e9d2b91`
 
-**Why**: wysiwyg must "store/know/work with the path for multiple projects." Today the
-only "project root" is `window.location.origin` (a URL), so file/git operations can't
-target a real repo. The user must be able to register a project by its on-disk path, and
+**Why**: wysiwyg must "store/know/work with the path for multiple projects." Before P1-0
+the only "project root" was `window.location.origin` (a URL), so file/git operations
+couldn't target a real repo. The user can now register a project by its on-disk path, and
 that path becomes the authoritative `projectRoot` for both edit and export modes.
 
-**Blocked by**: nothing. **Blocks**: P1-6 (path safety), and the existing edit flow's
-ability to operate against a real repo (currently only works via the
-`DEFAULT_PROJECT_ROOT` fallback in `routes/files.ts`).
+**Resolved**: P1-6's path safety now has a real root to bind to, and the edit flow operates
+against a real repo (with `DEFAULT_PROJECT_ROOT` as the fallback when nothing is registered
+for an origin).
 
-**Design**:
-- [ ] **Popup: "Add project" affordance.** User types an absolute on-disk path
-      (e.g. `/Users/.../my-project`). Pre-fill with the detected profile's suggested
-      root when available; editable. Validate the path looks like a project root
-      (has `package.json`, `pyproject.toml`, or a recognizable marker) before accepting.
-- [ ] **Inspect on register.** Reuse `detectProfile(url)` + a lightweight on-disk scan
-      (read `package.json`/`pyproject.toml`, list top-level dirs) to extend/build a
-      `ProjectProfile` for that path. If the URL matches an existing profile
-      (`antikythera`), use it; otherwise fall back to `generic` and let the user override.
-- [ ] **Persist the registry** in `chrome.storage.local` (manifest already has the
-      `storage` permission). Key by page origin/project id; store `{ path, profileName,
-      displayName, registeredAt }`. Support **multiple** projects.
-- [ ] **Select active project per session.** When the popup opens on a given URL,
-      look up the registered project for that origin (or prompt "which project?").
-      The selected project's `path` becomes `projectRoot` everywhere the popup currently
-      uses `elementContext.context.projectRoot`.
-- [ ] **Plumb the real path through the middleware.** Replace
-      `projectRoot = window.location.origin` in `content-script.ts` with the registered
-      on-disk path (sent via the capture message from the popup/background, since the
-      content script can't read chrome.storage synchronously — background passes it down).
-- [ ] **Tests**: unit tests for the registry (add/list/select/persist), and a test that
-      the registered path — not `window.location.origin` — reaches `/api/files/write`.
+**Design** (shipped):
+- [x] **Popup: "Add project" affordance.** User types an absolute on-disk path; the path is
+      validated as a project root via `GET /api/files/probe-root` (a project marker on disk)
+      before it is accepted into the registry.
+- [x] **Inspect on register.** Profiles stay URL-detected; the registered path is stored
+      alongside the profile name. `antikythera` matches its profile; otherwise `generic`,
+      user-overrideable.
+- [x] **Persist the registry** in `chrome.storage.local` (the manifest has the `storage`
+      permission). Keyed by origin; stores `{ path, profileName, displayName, registeredAt }`.
+      Supports multiple projects.
+- [x] **Select active project per session.** Per-origin active project + global override
+      (the open question below, resolved per-origin with global override). The selected
+      project's `path` is `projectRoot` everywhere the popup used `elementContext.context.projectRoot`.
+- [x] **Plumb the real path through the middleware.** The registered on-disk path replaces
+      `window.location.origin` in `content-script.ts` (background passes the registered path
+      down, since the content script can't read `chrome.storage` synchronously).
+- [x] **Tests**: ext `projectRegistry.test.ts` (30) for add/list/select/persist; mw
+      `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9) — including that the
+      registered path, not `window.location.origin`, reaches the write path.
 
-**Open question to resolve during design**: does the user pick the active project once
-globally (one active project at a time across all tabs) or per-origin (each localhost
-port maps to its own registered project)? Default: **per-origin**, override globally.
+**Resolved open question**: per-origin active project with a global override.
 
-### P1-6: File Export (write spec into the active project's backlog)
+### P1-6: File Export (write spec into the active project's backlog) ✅ shipped `acb45ab`
 
-**Blocked by**: P1-0 (needs the registered on-disk path as the write root).
+**Was blocked by**: P1-0 (the registered on-disk path as the write root) — resolved.
 
 **What it does**: takes the AI-generated spec (from `/api/ai/export-requirements`) plus
 a priority, and appends a TODO line + writes a `spec.md` into the active project per its
@@ -191,26 +213,31 @@ profile's conventions. For the `antikythera` profile that means:
   editable) to the export popup. `handleExport` sends the edited values. Update
   `popup.requirements.test.ts`.
 
-**Done when**:
-- [ ] `POST /api/files/append-ideas` implemented with schema above, PathSanitizer + GitManager.
-- [ ] ID generation correct against the real antikythera repo (verified: next ID after
+**Done when** (✅ all met):
+- [x] `POST /api/files/append-ideas` implemented with schema above, PathSanitizer + GitManager.
+- [x] ID generation correct against the real antikythera repo (verified: next ID after
       `ID-999` → `ID-1000`; respects 3-digit zero-padding).
-- [ ] Priority + title flow from export response → popup override → endpoint.
-- [ ] Types mirrored in both `shared/types.ts` files.
-- [ ] Undo (`POST /api/git/undo`) reverts the export commit cleanly.
+- [x] Priority + title flow from export response → popup override → endpoint.
+- [x] Types mirrored in both `shared/types.ts` files (singleton mirror after P1-7 cleanup).
+- [x] Undo (`POST /api/git/undo`) reverts the export commit cleanly.
 
-### P1-7: Documentation
-- [ ] Keep `ai-ui-editor/README.md` as the setup + API source of truth — ensure it
-      documents export mode + project registration (P1-0) once those land.
-- [ ] Keep root `README.md` as framing + index (links README + this TODO + vision).
-- [ ] Update `ai-ui-editor/PROJECT_PROFILE.md` to reflect user-registered paths (P1-0).
-- [ ] Keep `ai-ui-editor/PROJECT_STATUS.md` in sync as P1-0/P1-6 land.
+### P1-7: Documentation ✅ (this pass, 2026-07-05)
+- [x] `ai-ui-editor/README.md` kept as the setup + API source of truth — documents export
+      mode, project registration (P1-0), `/probe-root` + `/append-ideas`, and the models table.
+- [x] Root `README.md` kept as framing + index — P1-0/P1-6 marked shipped, doc-map
+      reconciled, deleted-doc callout added.
+- [x] `ai-ui-editor/PROJECT_PROFILE.md` updated to reflect that user-registered paths are
+      selectable now (P1-0 shipped).
+- [x] Stale snapshot/legacy docs removed as part of the sync: `ai-ui-editor/PROJECT_STATUS.md`,
+      `MVP_COMPLETE.md`, `POSTMVP_TODO.md`, `config.ts`, and the dropped `extension/shared/types.ts`.
+      (Their roles are covered by `ai-ui-editor/README.md` + this TODO + `PROJECT_BRIEF.md`.)
+- [x] A doc-consistency guard test pins the sync so the docs can't silently re-drift.
 
 ### P1-8: Testing
-- [ ] Unit tests for `getRequirementsPrompt()` (already 10 — extend to cover priority + title).
-- [ ] Integration tests for `/api/files/append-ideas` (idempotency, ID generation, path safety rejects traversal, GitManager commit).
-- [ ] Integration tests for the project registry (P1-0).
-- [ ] E2E: register project → right-click → export → verify ideas.md line + requirements/ID/spec.md created.
+- [x] Unit tests for `getRequirementsPrompt()` incl. priority + title — `PromptTemplates.requirements.test.ts` (12).
+- [x] Integration tests for `/api/files/append-ideas` (idempotency, ID generation, path-safety traversal rejection, GitManager commit) — `appendIdeas.test.ts` (15).
+- [x] Integration tests for the project registry (P1-0) — `probeRoot.test.ts` (13), `registryPlumbing.test.ts` (9), ext `projectRegistry.test.ts` (30).
+- [ ] E2E: register project → right-click → export → verify ideas.md line + requirements/ID/spec.md created. **Deferred** — no E2E harness exists yet (would need a running browser + a temp git project).
 
 ---
 
@@ -330,17 +357,18 @@ Phase 1 deliberately avoids it (file handoff only).
 
 | File | Purpose |
 |------|---------|
-| `ai-ui-editor/extension/content-script.ts` | Context menu, DOM capture, **`projectRoot` placeholder to fix in P1-0** |
-| `ai-ui-editor/extension/popup/App.tsx` | Popup UI; `handleExport` already targets `/api/files/append-ideas` (P1-6 endpoint) |
-| `ai-ui-editor/extension/background.ts` | Service worker, messaging relay; will carry registered projectRoot to content script (P1-0) |
-| `ai-ui-editor/middleware/src/routes/ai.ts` | AI endpoints incl. `/export-requirements` |
-| `ai-ui-editor/middleware/src/routes/files.ts` | File routes; P1-6 adds `/append-ideas` here |
-| `ai-ui-editor/middleware/src/ai/PromptTemplates.ts` | Prompt generation; P1-6 adds priority + title |
-| `ai-ui-editor/middleware/src/config/project-profiles.ts` | Profile defs + URL detection; P1-0 extends with registered paths |
-| `ai-ui-editor/middleware/src/services/PathSanitizer.ts` | Path-traversal guard; P1-6 must use it |
-| `ai-ui-editor/middleware/src/services/GitManager.ts` | Git write/undo; P1-6 must use it |
-| `ai-ui-editor/shared/types.ts` ↔ `ai-ui-editor/middleware/src/shared/types.ts` | **Mirrored — keep in sync** (Conventions) |
+| `ai-ui-editor/extension/content-script.ts` | Context menu, DOM capture; uses the registered on-disk `projectRoot` (P1-0). |
+| `ai-ui-editor/extension/shared/projectRegistry.ts` | On-disk path registry (P1-0): per-origin active project + global override, `chrome.storage.local`. |
+| `ai-ui-editor/extension/popup/App.tsx` | Popup UI; `handleExport` posts to `/api/files/append-ideas` (P1-6). |
+| `ai-ui-editor/extension/background.ts` | Service worker, messaging relay; carries the registered projectRoot to the content script (P1-0). |
+| `ai-ui-editor/middleware/src/routes/ai.ts` | AI endpoints incl. `/edit`, `/edit/stream`, `/export-requirements`. |
+| `ai-ui-editor/middleware/src/routes/files.ts` | File routes: `/validate`, `/write`, `/read`, `/probe-root` (P1-0), `/append-ideas` (P1-6). |
+| `ai-ui-editor/middleware/src/ai/PromptTemplates.ts` | Prompt generation; `getRequirementsPrompt` (priority + title). |
+| `ai-ui-editor/middleware/src/config/project-profiles.ts` | Profile defs + URL detection (built-in `antikythera` + `generic`). |
+| `ai-ui-editor/middleware/src/services/PathSanitizer.ts` | Path-traversal guard; `/append-ideas` routes through `safeFilePath`. |
+| `ai-ui-editor/middleware/src/services/GitManager.ts` | Git write/undo; `/append-ideas` commits via `writeFilesWithGit` (undoable). |
+| `ai-ui-editor/extension/shared/types.ts` ↔ `ai-ui-editor/middleware/src/shared/types.ts` | **Manually mirrored — keep in lockstep** (Conventions); pinned by `typesMirror.test.ts`. (A stray `ai-ui-editor/shared/types.ts` copy was removed in P1-7 cleanup; the live mirror pair is the two files above.) |
 
 ---
 
-*Last Updated: 2026-07-04*
+*Last Updated: 2026-07-05*

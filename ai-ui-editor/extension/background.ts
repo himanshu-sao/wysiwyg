@@ -43,7 +43,7 @@ const MIDDLEWARE_HTTP_URL = 'http://localhost:3000';
 
 // Create the "Edit with AI" context menu on right-click.
 // (contextMenus belongs to the service worker, NOT the content script —
-//  see POSTMVP_TODO.md P2. Previously this lived in content-script.ts and failed.)
+//  previously this lived in content-script.ts and failed.)
 // P1-2: Added second menu item for requirements-export mode.
 // P1-0: Menu labels are project-generic now (the menu is built in onInstalled,
 // before any origin is known). The popup surfaces the active project's name.

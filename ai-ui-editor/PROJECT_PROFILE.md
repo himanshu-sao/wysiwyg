@@ -58,13 +58,14 @@ const profile = detectProfile('http://localhost:5173');
 // Returns: antikythera profile
 ```
 
-> 🔴 **Auto-detection by URL is a stopgap, not the final design.** The intended mechanism
-> is **user-typed disk-path registration** (P1-0, see [`TODO.md`](TODO.md)) — the user
-> points wysiwyg at a project's on-disk path; wysiwyg inspects it, persists a registry
-> (`chrome.storage.local`), and that path becomes the authoritative `projectRoot` for
-> both edit and export modes (replacing the `window.location.origin` placeholder). URL
-> detection stays useful for picking a *built-in* profile match, but the registered path
-> will be what file/git operations target.
+> ✅ **Auto-detection by URL is one input; the registered disk path is authoritative.**
+> The mechanism is **user-typed disk-path registration** (P1-0, shipped `e9d2b91` — see
+> [`TODO.md`](TODO.md)): the user points wysiwyg at a project's on-disk path; wysiwyg
+> validates it via `/api/files/probe-root` (a project marker on disk), persists a registry
+> (`chrome.storage.local`, per-origin active project + global override), and that path
+> becomes the authoritative `projectRoot` for both edit and export modes (the
+> `window.location.origin` placeholder is gone). URL detection still picks the *built-in*
+> profile match; the registered path is what file/git operations target.
 
 ### 2. AI Prompt Enhancement
 
@@ -215,7 +216,7 @@ Return JSON: { spec, architectureHints, testScenarios, edgeCases }
 
 ## Future Enhancements (Deferred)
 
-- [ ] **P1-0: user-registered disk-path projects** — the active prerequisite; see [`TODO.md`](TODO.md). (Currently only built-in profiles selectable by URL detection.)
+- [x] **P1-0: user-registered disk-path projects** — shipped (`e9d2b91`); see [`TODO.md`](TODO.md). Registered paths are selectable now; the active project per origin (with global override) drives both edit and export.
 - [ ] User-editable profiles via UI
 - [ ] Profile inheritance (extend base React profile)
 - [ ] RAG over codebase for smarter file suggestions
@@ -229,9 +230,9 @@ Return JSON: { spec, architectureHints, testScenarios, edgeCases }
 | File | Purpose |
 |------|---------|
 | `middleware/src/config/project-profiles.ts` | Profile definitions + detection logic |
-| `middleware/src/config.ts` | Legacy config (to be migrated) — *verify still present; if already folded into `config/project-profiles.ts`, remove this row* |
-| `shared/types.ts` | Shared TypeScript types |
+| `extension/shared/projectRegistry.ts` | On-disk path registry (P1-0): per-origin active project + global override |
+| `extension/shared/types.ts` ↔ `middleware/src/shared/types.ts` | Shared TypeScript types (manually mirrored — keep in lockstep) |
 
 ---
 
-*Last Updated: 2026-07-04*
+*Last Updated: 2026-07-05*

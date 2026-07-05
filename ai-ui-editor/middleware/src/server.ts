@@ -5,6 +5,11 @@ import aiRoutes from './routes/ai';
 import filesRoutes from './routes/files';
 import wsRoutes from './routes/ws';
 import gitRoutes from './routes/git';
+// P1-7 / GAP_AUDIT "Model List Proliferation": validate the configured model
+// against AVAILABLE_MODELS at startup so a typo'd/stale NVIDIA_MODEL env var
+// fails fast with a clear message instead of silently using a wrong model at
+// the first AI request. Exported so the startup guard is testable.
+import { validateConfig } from './ai/OpencodeClient';
 
 const app = fastify({ logger: true });
 
@@ -29,6 +34,11 @@ app.get('/health', async () => {
 
 const start = async () => {
   try {
+    // P1-7: fail fast if NVIDIA_MODEL is set to something not in the catalog.
+    // validateConfig() is exported from OpencodeClient so the guard itself is
+    // unit-tested, and OpencodeClient.models.test.ts asserts this boot call exists
+    // and runs before app.listen.
+    validateConfig();
     await app.listen({ port: 3000, host: '0.0.0.0' });
     console.log('Middleware server is running on http://localhost:3000');
   } catch (err) {

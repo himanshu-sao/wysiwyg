@@ -73,6 +73,7 @@ The AI returns structured JSON with:
 - **Real token streaming**: Options render progressively as the AI streams
 - **Sandboxed previews**: `previewHtml` is sanitized (scripts/event-handlers/dangerous URLs stripped) and rendered in a locked-down iframe
 - **Project Registry (P1-0)**: register projects by their on-disk path; the path becomes the authoritative `projectRoot` for all file/git operations. Per-origin active project with global override. Registration requires a project-marker file on disk (validated by the middleware via `/api/files/probe-root`).
+- **File Export (P1-6)**: write the AI-generated spec into the active project's backlog — appends the intake-file line + creates `requirements/{ID-XXX}/spec.md` per the active profile, as one atomic git commit (undoable via `/api/git/undo`). `ID-001`…`ID-999` (3-digit zero-padded), then `ID-1000`.
 - **Auto-commit**: Git integration with automatic commits
 - **Undo support**: Revert last change with one click
 - **Live reload**: Changes appear instantly via HMR
@@ -93,8 +94,8 @@ The AI returns structured JSON with:
 ai-ui-editor/
 ├── extension/                 # Chrome Extension
 │   ├── manifest.json          # Extension manifest (storage permission for the registry)
-│   ├── content-script.ts      # DOM capture, context menu (projectRoot placeholder → P1-0)
-│   ├── background.ts          # Service worker, message handling
+│   ├── content-script.ts      # DOM capture, context menu (projectRoot = registered on-disk path, P1-0)
+│   ├── background.ts          # Service worker, message handling, project registry
 │   ├── popup/                 # React UI
 │   │   ├── index.html
 │   │   ├── App.tsx
@@ -108,7 +109,7 @@ ai-ui-editor/
 │   │   ├── server.ts          # Fastify server
 │   │   ├── routes/            # API routes
 │   │   │   ├── ai.ts          # /api/ai/edit, /api/ai/edit/stream, /api/ai/export-requirements
-│   │   │   ├── files.ts       # /api/files/{validate,write}  (P1-6 will add /append-ideas here)
+│   │   │   ├── files.ts       # /api/files/{validate,write,read,probe-root,append-ideas}
 │   │   │   ├── ws.ts          # WebSocket (/ws/connect)
 │   │   │   └── git.ts         # /api/git/undo
 │   │   ├── services/          # Business logic
@@ -123,11 +124,8 @@ ai-ui-editor/
 │   │   ├── config/            # Project Profile System (P1-1)
 │   │   │   └── project-profiles.ts    # built-in antikythera + generic profiles, detect/getProfile
 │   │   └── shared/types.ts    # mirrored with extension/shared/types.ts — keep in lockstep
-│   ├── __tests__/             # Vitest tests (e.g. ProjectProfiles.test.ts, PromptTemplates.requirements.test.ts)
+│   ├── __tests__/             # Vitest tests (e.g. ProjectProfiles.test.ts, PromptTemplates.requirements.test.ts, appendIdeas.test.ts, probeRoot.test.ts)
 │   └── package.json
-│
-├── shared/                    # Shared types (also mirrored at extension/shared/types.ts)
-│   └── types.ts
 │
 └── sample-project/            # Test target app (the thing you right-click into) — React + Vite + Tailwind on :5174
     ├── src/
@@ -321,7 +319,7 @@ Like `/api/ai/edit`, but streams options to the client token-by-token as the AI 
   error?: string;
 }
 ```
-> The `append-ideas` step — writing `spec` into the project's `ideas.md` + `requirements/ID-XXX/spec.md` — is **P1-6**, blocked on P1-0 (project registry); see [`TODO.md`](TODO.md). Not yet built.
+> The `append-ideas` step — writing `spec` into the project's `ideas.md` + `requirements/ID-XXX/spec.md` — is **shipped** as `POST /api/files/append-ideas` (P1-6, commit `acb45ab`); see the endpoint reference below.
 
 ### POST /api/files/validate
 
@@ -330,6 +328,63 @@ Validate a file for lint/type errors.
 ### POST /api/files/write
 
 Write changes to a file and auto-commit.
+
+### GET /api/files/probe-root
+
+**Project registration (P1-0).** Checks whether a path looks like a project root on disk
+(has a project marker — `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, or `.git`).
+The popup calls this during "Add project" before accepting the path into the registry (the
+extension cannot read the disk itself).
+
+**Query:** `?path=<absolute on-disk path>`
+
+**Response:**
+```typescript
+{
+  valid: boolean;        // a project marker was found at/under the path
+  exists: boolean;       // the path itself exists on disk
+  marker: string | null; // which marker was found, e.g. "package.json"
+  isAbsolute: boolean;   // echo of the input check
+  error?: string;
+}
+```
+
+### POST /api/files/append-ideas
+
+**File Export (P1-6).** Writes the AI-generated spec into the active project's backlog per
+its profile's conventions — appends an intake line to the profile's `intakeFile`
+(e.g. `automation-ideas/ideas.md`, line `- [ID-XXX] {title} | Priority: {Priority}`) and
+creates the profile's `requirements/{ID-XXX}/spec.md` — in **one atomic git commit**
+(undoable via `/api/git/undo`). Routes both paths through `PathSanitizer.safeFilePath`
+against the registered `projectRoot`; rejects any path that escapes it.
+
+**Request (sketch — see `files.ts` + `shared/types.ts` for the canonical schema):**
+```typescript
+{
+  spec: string;                         // generated spec markdown (from /export-requirements)
+  title?: string;                       // short title for the intake line (AI-suggested, editable)
+  priority: 'High' | 'Medium' | 'Low';  // AI-suggested, editable
+  architectureHints: string[];
+  testScenarios: string[];
+  edgeCases: string[];
+  instruction: string;
+  projectRoot: string;                  // the user-registered on-disk path (P1-0), NOT origin
+  projectProfile?: 'antikythera' | 'generic';
+}
+```
+**Response:**
+```typescript
+{
+  success: boolean;
+  id?: string;          // generated ID-XXX
+  ideasLine?: string;  // the line appended to the intake file (for confirmation/undo)
+  specPath?: string;   // absolute path to the created spec.md
+  error?: string;
+}
+```
+ID format (antikythera profile, verified): `ID-001`…`ID-999` (3-digit zero-padded), then
+`ID-1000` (4-digit). Idempotent — re-running the same export does not silently duplicate
+(same-ID collision is detected and rejected).
 
 ### POST /api/git/undo
 
@@ -343,7 +398,9 @@ These are scope *choices* for the current phase (see [`TODO.md`](TODO.md) Phase 
 - **Single-file edits**: each Edit-mode change modifies one file (multi-file coordination is deferred).
 - **Best support is React + Vite**: other frameworks detected but less exercised (`generic` profile).
 - **Manual extension rebuild**: extension requires `npm run build` after code changes.
-- **`projectRoot` is currently `window.location.origin`** (a URL placeholder): real on-disk project registration is **P1-0**, the active work item.
+- **`projectRoot` is the user-registered on-disk path** (P1-0): the `window.location.origin`
+  URL placeholder was replaced by the registered path (commit `e9d2b91`). Routes still fall
+  back to `DEFAULT_PROJECT_ROOT` when no project is registered for the origin.
 
 ## Troubleshooting
 

@@ -1,265 +1,69 @@
-# wysiwyg Gap Audit — Code vs. Roadmap
+# wysiwyg Gap Audit — Code Status & Pending Work
 
-> **Complete, verified code vs. roadmap audit.** Compares every line of code against the
-> authoritative roadmap (`TODO.md` Phase 1, P1-0 → P1-6) and the hardening claims
-> (P1–P10). Surfaces only what's *missing, broken, or drifting* — not a code review.
+> **Live status of the codebase vs. the roadmap (`TODO.md`), and an explicit
+> list of what is still pending.** This is the only gap audit — the earlier
+> 2026-07-04 audit is folded in below; nothing is preserved "as-is" for its
+> own sake. Surfaces what's *missing, stale, or deferred*, not a code review.
 >
-> *Last updated: 2026-07-04 after reading all 33 code/doc files + running tests.*
-> **Test counts verified:** 82 middleware tests + 47 extension tests = 129 total.
+> *Last updated: 2026-07-05. Test counts re-verified: **144 middleware + 77 extension
+> = 221 total, all passing**; both packages typecheck clean; extension builds.*
 >
-> **Legend:** 🔴 gap/blocker | 🟡 drift/minor | ✅ verified shipped
+> **Legend:** 🔴 blocker | 🟡 drift/minor | ✅ shipped | ⏸️ explicitly deferred | 📝 doc-stale (pending)
 
 ---
 
-## Executive Summary
+## TL;DR
 
-| Status | Count | Notes |
-|--------|-------|-------|
-| ✅ Verified shipped (P1–P10 + P1-1…P1-5) | 11 items | All hardening + Requirements Bridge foundation |
-| 🔴 Blocking gaps | 2 items | **P1-0 (Project Registry)** + **P1-6 (`/api/files/append-ideas`)** |
-| 🔴 Code drift / new gaps | 4 items | Type-mirror drift, antikythera strings, missing endpoint, WriteRequest.projectRoot |
-| 🟡 Minor/technical debt | 4 items | Model list proliferation, dual sanitizers, DevTools panel unused, export no streaming |
+**Phase 1 (Requirements Bridge) is feature-complete and test-pinned.** There are
+**0 open code blockers.** The remaining work is:
 
-**Bottom line:** The codebase is rock-solid for what it claims (P1–P10 + P1-1…P1-5).
-The only real blockers for the next milestone are **P1-0** (registry) and **P1-6** (file export endpoint).
+1. **📝 P1-7 doc-sync** — ✅ **done** (2026-07-05). The narrative docs have been
+   reconciled to "shipped": root `README.md`, `TODO.md`, `PROJECT_BRIEF.md`,
+   `ai-ui-editor/PROJECT_PROFILE.md`, `MVP_REQUIREMENTS.md`, the memory file, and
+   `ai-ui-editor/README.md` (already updated in the working tree). Stale snapshot
+   docs deleted. A doc-consistency guard test is now live.
+2. **⏸️ Two explicitly-deferred enhancements** — DevTools panel wiring, and
+   streaming for Export mode. Both were marked "deferred / not blocking" by the
+   original audit; neither is required for Phase 1.
+3. **P1-8 testing stretch goals** — most of P1-8's checklist is already covered
+   by the tests landed with the two commits; only an end-to-end test remains.
 
----
-
-## Files Read (Complete)
-
-### Documents (14)
-1. `PROJECT_BRIEF.md` ✅
-2. `README.md` ✅
-3. `TODO.md` ✅
-4. `MVP_REQUIREMENTS.md` ✅ (superseded)
-5. `VISION_REQUIREMENTS.md` ✅ (aspirational)
-6. `PROJECT_DETAILS.md` ✅ (historical)
-7. `memory/antikythera-integration-vision.md` ✅
-8. `ai-ui-editor/README.md` ✅
-9. `ai-ui-editor/PROJECT_STATUS.md` ✅ (stale snapshot)
-10. `ai-ui-editor/MVP_COMPLETE.md` ✅ (stale + self-contradictory)
-11. `ai-ui-editor/POSTMVP_TODO.md` ✅
-12. `ai-ui-editor/PROJECT_PROFILE.md` ✅
-13. `ai-ui-editor/sample-project/README.md` ✅
-14. `GAP_AUDIT.md` (this file) ✅
-
-### Extension Code (10)
-15. `extension/content-script.ts` ✅
-16. `extension/background.ts` ✅
-17. `extension/manifest.json` ✅
-18. `extension/shared/types.ts` ✅
-19. `extension/popup/App.tsx` ✅
-20. `extension/shared/diff.ts` ✅
-21. `extension/shared/apply.ts` ✅
-22. `extension/shared/sanitize.ts` ✅
-23. `extension/devtools/devtools.ts` ✅
-24. `extension/devtools/DevToolsPanel.tsx` ✅
-25. `extension/devtools/panel.tsx` ✅
-26. `extension/devtools/index.html` ✅
-
-### Middleware Code (11)
-27. `middleware/src/server.ts` ✅
-28. `middleware/src/routes/ai.ts` ✅
-29. `middleware/src/routes/files.ts` ✅
-30. `middleware/src/routes/git.ts` ✅
-31. `middleware/src/routes/ws.ts` ✅
-32. `middleware/src/services/PathSanitizer.ts` ✅
-33. `middleware/src/services/GitManager.ts` ✅
-34. `middleware/src/services/DiffValidator.ts` ✅
-35. `middleware/src/services/SourcemapResolver.ts` ✅
-36. `middleware/src/ai/OpencodeClient.ts` ✅
-37. `middleware/src/ai/PromptTemplates.ts` ✅
-38. `middleware/src/ai/ResponseParser.ts` ✅
-39. `middleware/src/shared/types.ts` ✅
-40. `middleware/src/config/project-profiles.ts` ✅
-
-### Test Files (7)
-41. `middleware/__tests__/api.test.ts` ✅ (3 tests)
-42. `middleware/__tests__/OpencodeClient.test.ts` ✅ (11 tests)
-43. `middleware/__tests__/OpencodeClient.streaming.test.ts` ✅ (3 tests)
-44. `middleware/__tests__/ProjectProfiles.test.ts` ✅ (19 tests)
-45. `middleware/__tests__/PromptTemplates.requirements.test.ts` ✅ (14 tests)
-46. `middleware/__tests__/ResponseParser.test.ts` ✅ (19 tests)
-47. `middleware/__tests__/SourcemapResolver.test.ts` ✅ (13 tests)
-48. `extension/__tests__/apply.test.ts` ✅ (13 tests)
-49. `extension/__tests__/diff.test.ts` ✅ (4 tests)
-50. `extension/__tests__/popup.requirements.test.ts` ✅ (17 tests)
-51. `extension/__tests__/sanitize.test.ts` ✅ (13 tests)
-
-**Total: 51 files read. 129 tests verified passing.**
+Everything the original 2026-07-04 audit flagged as a 🔴 blocker or 🟡 drift is
+shipped or reconciled, including the doc-sync. The next real milestone is
+**Phase 2** (richer profile system on top of the P1-0 registry).
 
 ---
 
-## 🔴 Critical Gaps (Blockers for Phase 1 Completion)
+## Shipped (verified against code, 2026-07-05)
 
-### P1-0: Project Registry (user-typed disk path)
+### Phase 1 hardening & Requirements Bridge foundation — all shipped
 
-**What:** The genuinely missing prerequisite capability. Today `projectRoot = window.location.origin`
-(a URL) everywhere. P1-0 makes the user-registered on-disk path authoritative for both edit
-and export modes.
+| Item | What it is | Verification |
+|------|------------|---------------|
+| **P1–P10** | Extension build pipeline, context menu, apply-flow fix, Zod + path safety, WebSocket fix, DiffValidator (TS API + oxlint), real sourcemap resolution, real token streaming, XSS sanitization, docs sync. | Each verified against code in the original audit; unchanged. |
+| **P1-1** | Project profiles — `PROFILES` (`antikythera` + `generic`), `detectProfile`, `getProfile`. | `ProjectProfiles.test.ts` (19). |
+| **P1-2** | Extension context menu (second item, mode handling). | `background.ts` menu items. |
+| **P1-3** | Export endpoint `POST /api/ai/export-requirements`. | `ai.ts`, `OpencodeClient.generateRequirementsExport`; 10 tests. |
+| **P1-4** | Requirements prompt template — `getRequirementsPrompt` with profile injection + AI-suggested `priority`/`title`. | `PromptTemplates.requirements.test.ts` (12). |
+| **P1-5** | Popup export UI — spec preview, editable textarea, hints/scenarios/edge-cases, priority dropdown, title field. | `popup.requirements.test.ts` (17). |
 
-**Blocked by:** nothing. **Blocks:** P1-6 (path safety), and the existing edit flow's ability
-to operate against a real repo.
+### Phase 1 capstones — the two former blockers, now shipped
 
-**Files that need changes:**
+| Item | Commit | What landed | Tests added |
+|------|--------|-------------|-------------|
+| **✅ P1-0 Project Registry** | `e9d2b91` | On-disk path registry in `extension/shared/projectRegistry.ts` (per-origin active project + global override); `chrome.storage.local` persistence; `content-script.ts` uses the registered path (orig. `window.location.origin` placeholder); `GET /api/files/probe-root` validates a project-marker file on disk. | ext `projectRegistry.test.ts` (30); mw `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9). |
+| **✅ P1-6 File Export** | `acb45ab` | `POST /api/files/append-ideas`; `generateNextId` (3-digit zero-padded `ID-001`…`ID-999`, then `ID-1000`); atomic intake-line + `spec.md` write via `GitManager.writeFilesWithGit`; one-click undo via `/api/git/undo`; `priority` + `title` flow AI prompt → export response → popup → endpoint. | `appendIdeas.test.ts` (15), `OpencodeClient.normalizePriority.test.ts` (6), +2 prompt tests. |
 
-| File | Current State | Required Change |
-|------|---------------|-----------------|
-| `extension/background.ts` | NO `chrome.storage` usage | Persist registry via `chrome.storage.local` (add/list/select), pass registered path to popup |
-| `extension/popup/App.tsx` | `projectRoot` from `elementContext.context.projectRoot` = `window.location.origin` | Add "Add project" affordance (input for disk path), project-select dropdown, plumb registered path into all requests |
-| `extension/content-script.ts:92` | `projectRoot = window.location.origin` | Replace with registered on-disk path (passed from background via capture message) |
-| `middleware/src/routes/files.ts` | `resolveProjectRoot(projectRoot, fallback)` with `DEFAULT_PROJECT_ROOT` | Already wired — just needs the real registered path from the client |
-| `middleware/src/routes/ai.ts` | Passes `context.projectRoot` to sourcemap resolver | Already wired |
-| Both `shared/types.ts` | Missing registry types | Add `RegisteredProject` interface for registry persistence |
+### Follow-up fixes (originally 🟡 drift/minor) — all resolved
 
-**Open design decision:** One active project per origin (default) vs global single active project.
-Per-origin is the stated default; popup should allow override.
+| Item | Resolution | Guard test |
+|------|-----------|------------|
+| **Type-mirror drift** | Both `shared/types.ts` reconciled to full lockstep (same exported type-name set + cross-package sample construction). | `typesMirror.test.ts` (4). |
+| **antikythera-specific strings** | Popup/background labels made dynamic from the active project (`${projectLabel}`, `${intakeLabel}`, "Export to project TODO"). | Verified: no hardcoded "antikythera" in user-facing labels. |
+| **Model list proliferation** | Consolidated into `AVAILABLE_MODELS` (single `readonly string[]` source of truth in `OpencodeClient.ts`); `listAvailableModels()` returns it; `validateConfig()` rejects an env `NVIDIA_MODEL` not in the catalog; `server.ts` calls `validateConfig()` at boot (fail-fast); `ai-ui-editor/README.md` table kept in lockstep. | `OpencodeClient.models.test.ts` (9, incl. startup-wiring). |
+| **Dual sanitization approaches** | `sanitizeFilePath` hardened to segment-wise traversal removal (Windows backslashes, obfuscated `..`, null bytes, absolute paths) and documented as a *coherence heuristic* — `PathSanitizer.safeFilePath` remains the authoritative `path.resolve()`-based security boundary (defense in depth). | +6 tests in `ResponseParser.test.ts`. |
 
-### P1-6: File Export (`POST /api/files/append-ideas`)
-
-**What:** New endpoint. Takes AI-generated spec from `/api/ai/export-requirements` plus priority/title,
-appends a TODO line to `ideas.md` + creates `requirements/{ID-XXX}/spec.md` per the active
-profile, atomic + idempotent, via `PathSanitizer` + `GitManager`.
-
-**Blocked by:** P1-0 (needs the registered on-disk path as the write root).
-
-**Gaps:**
-
-| File | Gap | Fix |
-|------|-----|-----|
-| `middleware/src/routes/files.ts` | **`/append-ideas` endpoint DOES NOT EXIST** | Add route handler with schema, implement write logic |
-| `middleware/src/shared/types.ts` | Missing `AppendIdeasRequest`/`AppendIdeasResponse` types | Add request/response interfaces |
-| `extension/shared/types.ts` | Same — type mirror must match | Add same types to extension |
-| `popup/App.tsx:249-263` | POSTs to `/api/files/append-ideas` but fire-and-forget; hardcoded message "coming in P1-6" | Handle server response, show confirmation with generated ID |
-| `popup/App.tsx` | No `priority` dropdown / `title` field in export UI | Add both (AI-suggested, user-editable) |
-| `popup/App.tsx:250-257` | Missing `projectRoot` + `priority` + `title` in request body | Add all three fields |
-| `middleware/src/ai/OpencodeClient.ts:367-447` | `generateRequirementsExport` missing `priority` + `title` in response | Add to response schema + return from function |
-| `middleware/src/ai/PromptTemplates.ts:67-125` | `getRequirementsPrompt` should request `priority` + `title` from AI | Add to output format description |
-| `middleware/src/config/project-profiles.ts` | ID format verified: `ID-001`…`ID-999`, then `ID-1000` (3-digit zero-padded) | Already correct for antikythera profile |
-
-**Success criteria:**
-- [ ] Endpoint implemented with atomic writes (both files or neither)
-- [ ] ID generation scans existing `ideas.md` + `requirements/` dir
-- [ ] `PathSanitizer.safeFilePath` + `GitManager.writeFileWithGit` used
-- [ ] Undo via existing `POST /api/git/undo` works cleanly
-- [ ] Types mirrored in both `shared/types.ts` files
-
----
-
-## 🟡 Drift / Type Inconsistencies
-
-### Type-Mirror Drift (extension ↔ middleware shared/types.ts)
-
-The two `shared/types.ts` files are **NOT in lockstep**, violating the convention from
-`MVP_REQUIREMENTS.md` and `TODO.md`. The drift happened despite the "never again" warning.
-
-| Type | extension/shared/types.ts | middleware/src/shared/types.ts | Status |
-|------|----------------------------|--------------------------------|--------|
-| `WriteRequest.projectRoot` | ✅ Has `projectRoot?: string` | ❌ Missing | Extension sends, middleware doesn't type-check |
-| `ExtensionMode` | ✅ `'css-edit' \| 'requirements-export'` | ❌ Missing | Used in popup state |
-| `ExtensionMessage` | ✅ 11 message types matching actual usage | ❌ Only 5 stale types | Middleware has stale enum |
-| `WriteResponse` | ❌ Missing | ✅ Has interface | Middleware returns it |
-| `ReadRequest` / `ReadResponse` | ❌ Missing | ✅ Both present | Files route uses these |
-| `RequirementsExportRequest` | ❌ Missing | ✅ Has interface | AI export uses |
-| `RequirementsExportResponse` | ❌ Missing | ✅ Has interface | AI export uses |
-
-**Resolution:** Fix during P1-0/P1-6 implementation (those reshape these types anyway).
-Do not fix now as separate chore — would be wasted rework that may drift again.
-
-### antikythera-Specific User-Facing Strings
-
-User-facing labels are hardcoded to "antikythera" — these must become project-generic
-when P1-0 lands (user-registered projects with configurable names):
-
-| File | Line | Current | Should Be |
-|------|------|---------|-----------|
-| `extension/background.ts` | 25 | `"Export to Antikythera TODO"` | Dynamic: `"Export to {project} TODO"` |
-| `extension/popup/App.tsx` | 240 | `"Export this specification to antikythera ideas.md?"` | Dynamic from profile |
-| `extension/popup/App.tsx` | 333 | `"Export to Antikythera"` | Dynamic: `"Export to {project}"` |
-| `extension/popup/App.tsx` | 514 | `"Export to ideas.md"` | Dynamic from profile.intakeFile |
-
-**Resolution:** P1-0 natural follow-up. The popup already has `mode` state; add
-`projectProfile` state and use it for labels.
-
----
-
-## 🟡 Minor Code Issues / Technical Debt
-
-### Model List Proliferation
-
-`OpencodeClient.ts` has **three separate model lists** that can drift:
-
-| Location | Models | Count | Lockstep |
-|----------|--------|-------|----------|
-| Code comment (lines 13-17) | claude-sonnet-4, llama-3.1-405b, gemma-2-9b, mistral-large-2 | 4 | ❌ No |
-| `DEFAULT_MODEL` comment (line 29) | llama-3.1-70b, mistral-large-2, llama-3.1-nemotron-70b | 3 | ❌ No |
-| `listAvailableModels()` (lines 343-352) | 8 models incl. claude-3.5-sonnet, phi-3-medium, nemotron-4-340b | 8 | ❌ No |
-
-**Note:** `ai-ui-editor/README.md` lines 24-32 has a model table (4 models) that also
-differs from the code. The README says to keep doc & code in lockstep.
-
-**Resolution:** Consolidate to a single source-of-truth constant in `OpencodeClient.ts`.
-
-### Dual Sanitization Approaches
-
-Two different sanitization mechanisms exist:
-
-| Location | Function | Approach | Used By |
-|----------|----------|----------|---------|
-| `middleware/src/ai/ResponseParser.ts:120-134` | `sanitizeFilePath` | Regex-based (`replace(/\.\.\//g, '')`, leading `/` strip) + allowlist prefixes | AI response file paths |
-| `middleware/src/services/PathSanitizer.ts:17-64` | `safeFilePath` | `path.resolve()` + prefix check against project root | File write/validate routes |
-
-**Worry:** The regex approach in `ResponseParser.ts` is less robust than `path.resolve()`.
-A malicious AI response could potentially bypass it (though it's behind NVIDIA NIM).
-
-**Resolution:** Replace `sanitizeFilePath` in ResponseParser with `safeFilePath`,
-or at minimum document the dual approaches and their threat models.
-
-### DevTools Panel Exists but Unused
-
-`extension/devtools/` has a full React panel with:
-- Edit history (localStorage-backed)
-- Export/import history as JSON
-- Filter/search
-- Undo from panel
-- Real-time message listener
-
-But it's **not wired into the main edit flow** — the popup doesn't broadcast
-`edit-applied` or `edit-undone` messages, so the DevTools panel never receives history.
-
-**Status:** Deferred. Not blocking P1-0/P1-6. Consider wiring in Phase 2.
-
----
-
-## ✅ Verified Shipped (All Confirmed Against Code)
-
-### P1–P10 Hardening
-
-| Item | Verification | Code Location |
-|------|--------------|---------------|
-| **P1** Extension build pipeline | `build-workers.mjs` builds both workers | `extension/scripts/build-workers.mjs` |
-| **P2** Context-menu in background | `chrome.contextMenus.create` x2 in `onInstalled` | `background.ts:18-27` |
-| **P3** Apply flow fix | `resolveApplyBase()` with precedence chain | `extension/shared/apply.ts:30-58` |
-| **P4** Zod + path safety | Zod schemas on all file routes + `safeFilePath` + `resolveProjectRoot` | `files.ts:10-26`, `PathSanitizer.ts:17-64` |
-| **P4** git/undo projectRoot fix | `UndoRequestSchema` + `resolveProjectRoot` | `git.ts:5-8`, `16-48` |
-| **P5** WebSocket path fix | Connects to `ws://localhost:3000/ws/connect` | `background.ts:10` |
-| **P6** DiffValidator (TS API + oxlint) | `ts.createProgram`, `ts.getPreEmitDiagnostics`, `npx oxlint --format=json` | `DiffValidator.ts:61-186` |
-| **P7** Real sourcemap resolution | `SourceMapConsumer`, inline+external maps, `sourcesContent` primary | `SourcemapResolver.ts:1-324` |
-| **P8** Real token streaming | `stream: true`, per-delta `onProgress('token', delta, {sofar})` | `OpencodeClient.ts:178-208`, `ai.ts:71-150` |
-| **P9** XSS sanitization | `sanitizeHtml()` strips dangerous tags/attrs/URLs, iframe `sandbox=""` | `sanitize.ts:18-30`, `App.tsx:432` |
-| **P10** Docs sync | NVIDIA NIM is real backend, default `meta/llama-3.1-70b-instruct` | `OpencodeClient.ts:22-30` |
-
-### P1-1…P1-5 Requirements Bridge (Foundation)
-
-| Item | Verification | Code Location |
-|------|--------------|---------------|
-| **P1-1** Project profiles | `PROFILES` obj with `antikythera` + `generic`, `detectProfile`, `getProfile` | `project-profiles.ts:26-60` |
-| **P1-2** Extension context menu | Two menu items, mode handling | `background.ts:23-27`, `35-69` |
-| **P1-3** Export endpoint | `/api/ai/export-requirements` route + handler | `ai.ts:152-194`, `OpencodeClient.ts:367-447` |
-| **P1-4** Requirements prompt | `getRequirementsPrompt` with profile injection | `PromptTemplates.ts:67-125` |
-| **P1-5** Popup export UI | Spec textarea, hints/scenarios/edge-cases, export button | `App.tsx:239-517` |
-
-### Confirmed Endpoints (All Wired)
+### Confirmed endpoints (all wired, all ✅)
 
 | Route | Method | Handler | Status |
 |-------|--------|---------|--------|
@@ -267,49 +71,109 @@ But it's **not wired into the main edit flow** — the popup doesn't broadcast
 | `/api/ai/edit/stream` | POST | `generateEditOptionsStream` (SSE) | ✅ |
 | `/api/ai/export-requirements` | POST | `generateRequirementsExport` | ✅ |
 | `/api/files/validate` | POST | `validateDiff` (TS API + oxlint) | ✅ |
-| `/api/files/write` | POST | `writeFileWithGit` (simple-git) | ✅ |
+| `/api/files/write` | POST | `writeFileWithGit` | ✅ |
 | `/api/files/read` | GET | `fs.readFile` via `safeFilePath` | ✅ |
-| `/api/git/undo` | POST | `undoLastCommit` (simple-git revert) | ✅ |
+| `/api/files/probe-root` | GET | `probeProjectRoot` (marker check) | ✅ (P1-0) |
+| `/api/files/append-ideas` | POST | `appendRequirements` (atomic GitManager write) | ✅ (P1-6) |
+| `/api/git/undo` | POST | `undoLastCommit` | ✅ |
 | `/ws/connect` | GET (WS) | WebSocket relay | ✅ |
-| `/api/files/append-ideas` | POST | **🔴 MISSING** | P1-6 |
 
 ---
 
-## Test Results (Verified 2026-07-04)
+<a name="pending"></a>
+## Pending
+
+### 📝 P1-7: Doc-sync ✅ done (2026-07-05)
+
+The Phase-1 capstones (P1-0, P1-6) shipped; the narrative docs have been
+reconciled to "shipped" and no longer contradict the code. The stale-snapshot/
+legacy docs identified below were **deleted** (not just flagged) in this pass:
+
+| Doc | What was done |
+|-----|---------------|
+| `ai-ui-editor/README.md` | Already reconciled to shipped state (prior session); documents `/probe-root` + `/append-ideas` + registry UX. |
+| Root `README.md` | P1-0/P1-6 moved from 🔴/active → ✅/shipped; doc-map rows for deleted docs removed; Known contradictions §4 → "shipped"; Decision → "Phase 1 feature-complete." |
+| `TODO.md` | P1-0/P1-6 checkboxes checked + commit hashes; Phase 1 header → "shipped"; "What landed" section added; Related Files table updated; P1-7/P1-8 checkboxes reconciled. |
+| `PROJECT_BRIEF.md` | "Active work" → "shipped"; endpoints table updated; Known contradictions §4 → "shipped"; doc-map deleted-docs callout; "In one breath" → Phase 1 complete. |
+| `ai-ui-editor/PROJECT_PROFILE.md` | Stopgap callout (🔴→✅); Future Enhancements P1-0 → shipped; Related Files table updated (legacy config.ts row removed). |
+| `MVP_REQUIREMENTS.md` | Banner updated: no longer points to deleted `POSTMVP_TODO.md`; Phase 1 shipped framing. |
+| `memory/antikythera-integration-vision.md` | P1-0/P1-6 → shipped; "active" → "shipped" labels; closing table updated; deleted-doc ref removed. |
+| `ai-ui-editor/MVP_COMPLETE.md`, `POSTMVP_TODO.md`, `PROJECT_STATUS.md`, `config.ts`, `ai-ui-editor/shared/types.ts`, `TODO.proposed.md` | **Deleted.** Snapshot/legacy/duplicate artifacts; their roles are covered by the surviving authoritative docs. |
+| Comment dangling refs | `background.ts` and `PathSanitizer.ts` comments that referenced `POSTMVP_TODO.md` → updated to neutral references. |
+| Doc-consistency guard test | Added: asserts that no "🔴 P1-0/P1-6" / "planned / not yet built" / future-tense framing persists in the authoritative docs. |
+
+**Done when** criterion met: no "🔴 P1-0" / "🔴 P1-6" / "active work item" /
+"P1-6 will add" / "Not yet built" framing remains in any authoritative doc; all
+are "shipped" with commit hashes.
+
+### ⏸️ P1-7 follow-ups explicitly deferred (non-blocking)
+
+- **DevTools panel wiring** — `extension/devtools/` has a full React panel that
+  listens for `edit-applied` / `edit-undone` messages, but the popup doesn't
+  broadcast them, so the panel never receives history. Original audit: *"Not
+  blocking P1-0/P1-6. Consider wiring in Phase 2."* **Status: unchanged, deferred.**
+- **Export-mode streaming** — Edit mode streams via `/api/ai/edit/stream`;
+  Export yields a single spec, so streaming adds little value. Original audit:
+  recorded awareness only. **Status: deferred, not pursued.**
+
+### P1-8: Testing stretch goals — mostly covered, one gap
+
+| P1-8 checklist item (`TODO.md`) | Status |
+|----------------------------------|--------|
+| Unit tests for `getRequirementsPrompt()` incl. priority + title | ✅ `PromptTemplates.requirements.test.ts` (12). |
+| Integration tests for `/api/files/append-ideas` (idempotency, ID generation, path-safety traversal, GitManager commit) | ✅ `appendIdeas.test.ts` (15). |
+| Integration tests for the project registry (P1-0) | ✅ `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9) + ext `projectRegistry.test.ts` (30). |
+| E2E: register project → right-click → export → verify `ideas.md` line + `requirements/ID/spec.md` created | ⏸️ **Not done.** No E2E harness exists; would require a running browser + a temp git project. Deferred until an E2E layer is added. |
+
+### Phase 2+ — future roadmap (not pending for Phase 1)
+
+Per `TODO.md`, the Phase-1 capstones unblock Phase 2 (richer profile system on
+top of the P1-0 registry: `P2-1` profile schema, `P2-2` profile loader driven by
+the registry, `P2-3` selection UX, `P2-4` per-profile output customization) and
+eventually Phase 3 (live API bridge to a target project's pipeline). These are
+*next-milestone* work, not gaps — listed here only so the pending picture is
+complete.
+
+---
+
+## Test results (re-verified 2026-07-05)
+
+> All green. **144 middleware + 77 extension = 221 tests passing.** Both packages
+> `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 
 | Project | File | Tests | Status |
 |---------|------|-------|--------|
-| Middleware | `api.test.ts` | 3 | ✅ Pass |
-| Middleware | `OpencodeClient.test.ts` | 11 | ✅ Pass |
-| Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ Pass |
-| Middleware | `ProjectProfiles.test.ts` | 19 | ✅ Pass |
-| Middleware | `PromptTemplates.requirements.test.ts` | 14 | ✅ Pass |
-| Middleware | `ResponseParser.test.ts` | 19 | ✅ Pass |
-| Middleware | `SourcemapResolver.test.ts` | 13 | ✅ Pass |
-| **Middleware Total** | | **82** | ✅ All pass |
-| Extension | `apply.test.ts` | 13 | ✅ Pass |
-| Extension | `diff.test.ts` | 4 | ✅ Pass |
-| Extension | `popup.requirements.test.ts` | 17 | ✅ Pass |
-| Extension | `sanitize.test.ts` | 13 | ✅ Pass |
-| **Extension Total** | | **47** | ✅ All pass |
-| **Grand Total** | | **129** | ✅ All pass |
-
-**Note:** Previous doc claims of "37 middleware + 30 extension" were stale. Actual is **82 + 47 = 129 tests**.
-
----
-
-## Summary: What's Next
-
-1. **P1-0 Project Registry** — Unblocks everything. Implement user-typed disk path
-   registry in extension, plumb through to middleware.
-2. **P1-6 File Export** — Blocked on P1-0. Add `/api/files/append-ideas` endpoint,
-   add priority/title to export flow, update types.
-3. **Fix type-mirror drift** — During P1-0/P1-6, reconcile both `shared/types.ts` files.
-4. **Update antikythera strings** — During P1-0, make user-facing labels dynamic.
-
-**Everything else is working as claimed.** The MVP + P1–P10 + P1-1…P1-5 are
-solid, tested, and production-ready for their scoped capabilities.
+| Middleware | `api.test.ts` | 3 | ✅ |
+| Middleware | `appendIdeas.test.ts` *(P1-6)* | 15 | ✅ |
+| Middleware | `OpencodeClient.models.test.ts` *(P1-7)* | 9 | ✅ |
+| Middleware | `OpencodeClient.normalizePriority.test.ts` *(P1-6)* | 6 | ✅ |
+| Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
+| Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
+| Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
+| Middleware | `ProjectProfiles.test.ts` | 19 | ✅ |
+| Middleware | `PromptTemplates.requirements.test.ts` | 12 | ✅ |
+| Middleware | `registryPlumbing.test.ts` *(P1-0)* | 9 | ✅ |
+| Middleware | `ResponseParser.test.ts` | 21 | ✅ |
+| Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
+| Middleware | `docSync.test.ts` *(P1-7 doc-consistency guard)* | 15 | ✅ |
+| Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
+| **Middleware Total** | | **144** | ✅ |
+| Extension | `apply.test.ts` | 10 | ✅ |
+| Extension | `diff.test.ts` | 7 | ✅ |
+| Extension | `popup.requirements.test.ts` | 17 | ✅ |
+| Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
+| Extension | `sanitize.test.ts` | 13 | ✅ |
+| **Extension Total** | | **77** | ✅ |
+| **Grand Total** | | **221** | ✅ |
 
 ---
 
-*Last updated: 2026-07-04. All 51 code/doc files read. 129 tests passing.*
+## How this audit changed
+
+- **2026-07-04 (original):** identified 2 🔴 blockers (P1-0, P1-6) + 4 🟡 drift/minor items; 129 tests.
+- **2026-07-05 (rewrite #1):** P1-0 + P1-6 shipped (+83 tests → 206); all 4 drift/minor items resolved with guard tests; `validateConfig()` wired into `server.ts` boot. **0 open code blockers.** Remaining gap: doc-sync (P1-7).
+- **2026-07-05 (rewrite #2 — this pass):** P1-7 doc-sync completed — all narrative docs reconciled to "shipped"; 6 stale-snapshot/legacy files deleted; dangling references cleaned; doc-consistency guard test added (+15 tests → 221). **0 open gaps in Phase 1.** The only remaining items are the two explicitly-deferred enhancements (DevTools panel, Export streaming) and the deferred E2E test. Next milestone: Phase 2.
+
+---
+
+*Last updated: 2026-07-05. Status: Phase 1 feature-complete, test-pinned (221 tests), doc-synced; no open Phase 1 gaps. Next = Phase 2 + deferred enhancements.*

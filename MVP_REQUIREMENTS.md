@@ -1,12 +1,14 @@
 # MVP Requirements: AI-Powered UI Editing Browser Extension
 
 > ⚠️ **SUPERSEDED — kept for historical intent only.** The MVP described here (MVP-01…19)
-> has **shipped** (see git history and [`ai-ui-editor/POSTMVP_TODO.md`](ai-ui-editor/POSTMVP_TODO.md)).
-> Do **not** treat this file's unchecked boxes / "Out of Scope" list as a current to-do list —
-> read it for *intent and acceptance criteria*, not status. For the **current** roadmap see
-> [`TODO.md`](TODO.md) (Requirements Bridge Phase 1: P1-0, P1-6) and [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
-> Note: the count below is **19** MVP tasks (MVP-01…MVP-19); some celebratory docs misstate
-> it as "20" — 19 is correct.
+> has **shipped**, and so has the follow-on Requirements Bridge Phase 1 (incl. the Project
+> Registry `e9d2b91` and File Export `acb45ab`). Do **not** treat this file's unchecked boxes
+> / "Out of Scope" list as a current to-do list — read it for *intent and acceptance criteria*,
+> not status. For the **current** roadmap see [`TODO.md`](TODO.md) (Phase 1 shipped; Phase 2 next)
+> and [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md). The live code-vs-roadmap audit is
+> [`GAP_AUDIT.md`](GAP_AUDIT.md).
+> Note: the count below is **19** MVP tasks (MVP-01…MVP-19); **19 is correct** (the stale
+> celebratory doc that said "20" was removed in the P1-7 doc-sync).
 
 ## Version: 1.0 (Phase 1)
 ## Target: Working end-to-end prototype in 2-3 weeks

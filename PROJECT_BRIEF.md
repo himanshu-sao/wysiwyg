@@ -3,10 +3,10 @@
 > **This is the single, self-contained description of what wysiwyg is, why it exists,
 > how it works, what's built, what's next, and the scope lines we hold.** Read this first
 > in any new session. It is the durable "pitch"; for live status/roadmap see
-> [`README.md`](README.md) (shared understanding + doc-map) and [`TODO.md`](TODO.md)
-> (the active roadmap with P1-0 / P1-6).
+> [`README.md`](README.md) (shared understanding + doc-map), [`TODO.md`](TODO.md)
+> (Phase 1 shipped; Phase 2 next), and [`GAP_AUDIT.md`](GAP_AUDIT.md) (live code-vs-roadmap audit).
 >
-> *Last updated: 2026-07-04. If this file and another doc disagree, this file +
+> *Last updated: 2026-07-05. If this file and another doc disagree, this file +
 > `README.md` + `TODO.md` are the authoritative trio; the other doc is stale.*
 
 ---
@@ -64,8 +64,8 @@ wysiwyg is **not "the antikythera tool."** It is a general-purpose, multi-projec
   structure/conventions, and **persists a registry entry** (`chrome.storage.local`).
 - **One registered project per session**, used by *both* modes.
 - That registered disk path is the **authoritative `projectRoot`** for every file/git op.
-  (Today this is a placeholder — `window.location.origin`, a URL — wrong for any file op.
-  Replacing it is the #1 work item; see §6.)
+  (Shipped in P1-0, `e9d2b91` — the `window.location.origin` URL placeholder is gone. Routes
+  fall back to `DEFAULT_PROJECT_ROOT` when no project is registered for the origin.)
 
 **`antikythera` is the first concrete profile we built against — an *example*, the first
 instance, NOT the purpose.** Anywhere a doc says "antikythera," read "the first registered
@@ -130,25 +130,25 @@ The details that make this not-toy:
   the Export context-menu item, `POST /api/ai/export-requirements`, the requirements prompt
   template, and the Popup export UI.
 
-### 🔴 Active work — Phase 1 Requirements Bridge (the rest)
-- **P1-0 — Project Registry (user-typed disk path).** *The genuinely missing capability and
-  the prerequisite for everything else.* User types an absolute on-disk path; validate it
-  looks like a project root; inspect (reuse `detectProfile` + lightweight scan); persist in
-  `chrome.storage.local` keyed by origin; make that path authoritative `projectRoot`
-  everywhere it currently uses `window.location.origin`. Plumb popup → background → content
-  script (content scripts can't read `chrome.storage` synchronously). Test that the
+### ✅ Requirements Bridge Phase 1 — shipped (incl. the two former blockers)
+- **P1-0 — Project Registry (user-typed disk path)** — shipped `e9d2b91`. The user types an
+  absolute on-disk path; wysiwyg validates a project marker on disk (`GET /api/files/probe-root`),
+  persists the registry in `chrome.storage.local` keyed by origin (per-origin active project +
+  global override), and that path is the authoritative `projectRoot` everywhere it used
+  `window.location.origin`. Plumbed popup → background → content script. Tested that the
   registered path — not the origin URL — reaches `/api/files/write`.
-- **P1-6 — File Export (write spec into the active project's backlog).** *Blocked on P1-0.*
-  New endpoint `POST /api/files/append-ideas`: append a TODO line to `ideas.md`
-  (`- [ID-XXX] {title} | Priority: {Priority}`) + create `requirements/{ID-XXX}/spec.md`,
-  per the active profile's conventions, via `PathSanitizer` + `GitManager`, atomic and
-  idempotent. ID format: `ID-001`…`ID-999`, then `ID-1000` (3-digit zero-padded, verified
-  against the real antikythera repo). Priority + title: AI-suggested, user-overridable in popup.
+- **P1-6 — File Export (write spec into the active project's backlog)** — shipped `acb45ab`.
+  `POST /api/files/append-ideas` appends the profile intake line (e.g. `ideas.md`
+  `- [ID-XXX] {title} | Priority: {Priority}`) + creates `requirements/{ID-XXX}/spec.md`,
+  per the active profile's conventions, via `PathSanitizer` + `GitManager` as one atomic git
+  commit (undoable via `/api/git/undo`). ID format: `ID-001`…`ID-999`, then `ID-1000`
+  (3-digit zero-padded, verified against the real antikythera repo). Priority + title:
+  AI-suggested, user-overridable in popup.
 
 ### Confirmed HTTP endpoints (code, today)
 `/api/ai/edit` · `/api/ai/edit/stream` · `/api/ai/export-requirements` · `/api/files/validate` ·
-`/api/files/write` · `/api/git/undo` · (WS `/ws/connect`).
-> `/api/files/append-ideas` is **planned (P1-6), not yet built** — do not treat as shipped.
+`/api/files/write` · `/api/files/probe-root` (P1-0) · `/api/files/append-ideas` (P1-6) ·
+`/api/git/undo` · (WS `/ws/connect`). All shipped.
 
 ---
 
@@ -189,16 +189,19 @@ the answer is almost always "not yet — that's vision."
 
 ## 9. Known contradictions an AI must not propagate
 
-1. **antikythera: example vs purpose** — `memory/antikythera-integration-vision.md` frames it
-   as the *purpose*; this brief + `TODO.md` + `README.md` say *example*. **Example is correct.**
-2. **Task count** — `MVP_REQUIREMENTS.md` defines 19 MVP tasks; `MVP_COMPLETE.md` says "20."
-   **19 is correct.**
-3. **Real AI vs mock** — `MVP_COMPLETE.md` says both "real AI (not mock)" and "needs Opencode
-   SDK / Mock AI." **Real NVIDIA NIM is correct** (P10).
-4. **`/api/files/append-ideas`** — listed in `TODO.md` P1-6 as **planned**. Not shipped until
-   P1-6 lands in `routes/files.ts`.
-5. **"Servers Running" tables** (`MVP_COMPLETE.md`, `PROJECT_STATUS.md`) present live state as
-   if servers are up now — they are not a runtime status.
+1. **antikythera: example vs purpose** — `memory/antikythera-integration-vision.md` *used to*
+   frame it as the *purpose*; this brief + `TODO.md` + `README.md` say *example*, and the
+   memory file was rewritten to match. **Example is correct.**
+2. **Task count** — `MVP_REQUIREMENTS.md` defines 19 MVP tasks. **19 is correct** (the stale
+   `MVP_COMPLETE.md` that said "20" was deleted 2026-07-05).
+3. **Real AI vs mock** — **Real NVIDIA NIM is correct** (`meta/llama-3.1-70b-instruct`, P10);
+   the mock is only the no-API-key fallback. (The stale `MVP_COMPLETE.md` that contradicted
+   itself on this was deleted 2026-07-05.)
+4. **`/api/files/append-ideas`** — **shipped** (`acb45ab`, P1-6), registered in `routes/files.ts`.
+   Treat it as a live endpoint. (`/api/files/probe-root` likewise shipped with P1-0, `e9d2b91`.)
+5. **"Servers Running" tables** — the two docs that presented live server state as if always up
+   (`MVP_COMPLETE.md`, `PROJECT_STATUS.md`) were deleted 2026-07-05 (snapshot docs that aged
+   into contradiction). For how to run, use `ai-ui-editor/README.md` → Setup.
 
 ---
 
@@ -208,18 +211,16 @@ the answer is almost always "not yet — that's vision."
 |-----|------|--------|
 | `PROJECT_BRIEF.md` (this file) | Self-contained pitch/brief | **Authoritative** |
 | `README.md` | Framing + shared understanding + index | **Authoritative** |
-| `TODO.md` | Phase 1 Requirements Bridge roadmap (P1-0, P1-6 active) | **Authoritative** for the roadmap |
+| `TODO.md` | Phase 1 Requirements Bridge roadmap | **Authoritative** for the roadmap (Phase 1 shipped; Phase 2 next) |
+| `GAP_AUDIT.md` | Live code-vs-roadmap audit + pending work | **Authoritative** for current status |
 | `MVP_REQUIREMENTS.md` | The 2–3 week MVP spec (MVP-01…19) | **Superseded** — MVP shipped; intent only |
 | `VISION_REQUIREMENTS.md` | v2.0 north star | **Aspirational** |
-| `ai-ui-editor/README.md` | Setup + build + API reference | **Stale** — needs P1-7 update |
-| `ai-ui-editor/POSTMVP_TODO.md` | P1–P10 completion log w/ commit hashes | Accurate to `dd97dee`; "next" list predates Requirements Bridge |
-| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (antikythera/generic) | Accurate; needs P1-0 forward-pointer |
-| `ai-ui-editor/PROJECT_STATUS.md` | Status snapshot | Stale; fold or date |
-| `ai-ui-editor/MVP_COMPLETE.md` | "MVP complete" doc | **Stale + self-contradictory**; salvage then delete |
-| `ai-ui-editor/sample-project/README.md` | Vite scaffold boilerplate | Orphan — prepend a 3-line pointer or delete |
-| `memory/antikythera-integration-vision.md` | Original "build wysiwyg for antikythera" vision | **CONFLICTS** — needs rewrite to "antikythera = first example" |
-| `TODO.proposed.md` | Near-duplicate of `TODO.md` | **Delete** — only unique line is provably wrong |
-| `PROJECT_DETAILS.md` | Pre-MVP feasibility draft | **Historical** — wrong about AI backend/endpoints/scope; relabel or retire |
+| `ai-ui-editor/README.md` | Setup + build + API reference | **Authoritative** for setup + API — updated to shipped state (P1-7) |
+| `ai-ui-editor/PROJECT_PROFILE.md` | Project Profile System (antikythera/generic) | **Authoritative** for profiles — updated to reflect registered paths (P1-0 shipped) |
+| `ai-ui-editor/sample-project/README.md` | Vite scaffold boilerplate | 3-line pointer header identifies it as the wysiwyg target app |
+| `memory/antikythera-integration-vision.md` | Repo memory: capability applied to multi-project targets | **Authoritative** — rewritten to "antikythera = first example" |
+| `PROJECT_DETAILS.md` | Pre-MVP feasibility draft (2026-07-02) | **Historical** — wrong about AI backend/endpoints/scope; correction banner on the file |
+| *Deleted (P1-7, 2026-07-05)* | `ai-ui-editor/POSTMVP_TODO.md`, `ai-ui-editor/PROJECT_STATUS.md`, `ai-ui-editor/MVP_COMPLETE.md`, `ai-ui-editor/middleware/src/config.ts`, `ai-ui-editor/shared/types.ts`, `TODO.proposed.md` | Snapshot/legacy/duplicate artifacts that had drifted into contradiction; their roles are covered by `ai-ui-editor/README.md` + `TODO.md` + this brief. Do not reintroduce. |
 
 ---
 
@@ -228,11 +229,12 @@ the answer is almost always "not yet — that's vision."
 An **AI prompt generator that can see your running UI and knows your project's conventions**,
 with two outputs — apply a diff now (Edit) or write a structured spec into your project's
 backlog for later (Export) — generalized across any project you register by disk path.
-MVP shipped, post-MVP hardening (P1–P10) shipped, Requirements Bridge Phase 1 foundation
-(P1-1…P1-5) shipped. **Immediate next step: P1-0 (project registry via disk path), which
-unblocks P1-6 (writing specs into a registered project's backlog).** Everything else is
-deliberately deferred.
+MVP shipped, post-MVP hardening (P1–P10) shipped, Requirements Bridge Phase 1 shipped
+end-to-end (foundation P1-1…P1-5 + the Project Registry P1-0 `e9d2b91` + the File Export
+P1-6 `acb45ab`), test-pinned at 221 tests. **Phase 1 is feature-complete.** The next
+milestone is **Phase 2** — a richer profile system on top of the P1-0 registry (see `TODO.md`).
+Everything beyond that is deliberately deferred.
 
 ---
 
-*Authored 2026-07-04. Keep in sync with `README.md` + `TODO.md`; the live roadmap lives there.*
+*Authored 2026-07-04; updated 2026-07-05. Keep in sync with `README.md` + `TODO.md`; the live roadmap lives there.*
