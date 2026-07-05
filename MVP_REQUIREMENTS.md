@@ -1,5 +1,13 @@
 # MVP Requirements: AI-Powered UI Editing Browser Extension
 
+> ⚠️ **SUPERSEDED — kept for historical intent only.** The MVP described here (MVP-01…19)
+> has **shipped** (see git history and [`ai-ui-editor/POSTMVP_TODO.md`](ai-ui-editor/POSTMVP_TODO.md)).
+> Do **not** treat this file's unchecked boxes / "Out of Scope" list as a current to-do list —
+> read it for *intent and acceptance criteria*, not status. For the **current** roadmap see
+> [`TODO.md`](TODO.md) (Requirements Bridge Phase 1: P1-0, P1-6) and [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+> Note: the count below is **19** MVP tasks (MVP-01…MVP-19); some celebratory docs misstate
+> it as "20" — 19 is correct.
+
 ## Version: 1.0 (Phase 1)
 ## Target: Working end-to-end prototype in 2-3 weeks
 
