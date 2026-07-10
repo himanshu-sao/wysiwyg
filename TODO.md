@@ -375,7 +375,7 @@ Findings below are anchored to the skill's named rules; severities are the skill
 
 ### 🟡 High
 
-- [ ] **A4 — Visible labels, not placeholder-only.** The instruction `<textarea>`,
+- [x] **A4 — Visible labels, not placeholder-only.** The instruction `<textarea>`,
       the "Add project" path `<input>`, the manual-pick `<input>`, and the export
       `<input>` title rely on `placeholder`. Wrap each in a `<label>` with visible
       text (the `Title`/`Priority` fields already do — match them; for the textarea

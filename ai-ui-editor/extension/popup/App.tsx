@@ -768,13 +768,16 @@ const App: React.FC = () => {
           )}
 
           <form onSubmit={handleAddProject} className="flex gap-1">
-            <input
-              value={newProjectPath}
-              onChange={(e) => setNewProjectPath(e.target.value)}
-              placeholder="/absolute/path/to/project"
-              className="flex-1 p-1 border rounded text-xs"
-              title="Absolute on-disk path to the project root"
-            />
+            <label className="flex-1">
+              <span className="sr-only">Project root path</span>
+              <input
+                value={newProjectPath}
+                onChange={(e) => setNewProjectPath(e.target.value)}
+                placeholder="/absolute/path/to/project"
+                className="w-full p-1 border rounded text-xs"
+                title="Absolute on-disk path to the project root"
+              />
+            </label>
             <button
               type="submit"
               className="bg-gray-700 text-white px-2 py-1 rounded text-xs cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
@@ -791,16 +794,21 @@ const App: React.FC = () => {
       <p className="text-sm text-gray-500 mb-4">{contextHint}</p>
 
       <form onSubmit={handleSubmit} className="mb-4">
-        <textarea
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder={isExportMode
-            ? "What should this do? Describe the functionality..."
-            : "Describe the visual change you want..."
-          }
-          className="w-full p-2 border rounded mb-2 text-sm"
-          rows={3}
-        />
+        <label className="block mb-2">
+          <span className="sr-only">
+            {isExportMode ? 'Specification description' : 'Describe the visual change'}
+          </span>
+          <textarea
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder={isExportMode
+              ? "What should this do? Describe the functionality..."
+              : "Describe the visual change you want..."
+            }
+            className="w-full p-2 border rounded mb-2 text-sm"
+            rows={3}
+          />
+        </label>
         <button
           type="submit"
           disabled={loading}
@@ -846,12 +854,15 @@ const App: React.FC = () => {
         <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
           Couldn't locate the source via sourcemap. Pick the file manually:
           <form onSubmit={handlePickFile} className="mt-2 flex gap-2">
-            <input
-              value={pickedFile}
-              onChange={(e) => setPickedFile(e.target.value)}
-              placeholder="src/components/Card.tsx"
-              className="flex-1 p-1 border rounded text-xs"
-            />
+            <label className="flex-1">
+              <span className="sr-only">Source file path</span>
+              <input
+                value={pickedFile}
+                onChange={(e) => setPickedFile(e.target.value)}
+                placeholder="src/components/Card.tsx"
+                className="w-full p-1 border rounded text-xs"
+              />
+            </label>
             <button
               type="submit"
               disabled={pickingFile}
