@@ -1,19 +1,23 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-10 (Phase 2 complete — P2-1…P2-4 shipped; 289 tests; see Audit appendix)
+**Last revised**: 2026-07-10 (Phase 2 + P2.5 complete — P2-1…P2-4 + A1…A10 all shipped; 297 tests (104 ext + 193 mw); see Audit appendix)
 
-> **Status:** **Phase 1 (Requirements Bridge) and Phase 2 (Project Profiles +
-> Multi-Project Support) are feature-complete and test-pinned** (289 tests passing).
-> Phase 1's two former blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and
-> **P1-6 File Export** (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) →
-> P2-2 (`ProfileManager`) → P2-3 (profile-selection UI, `e79432c`) → P2-4
-> (per-profile artifact templates). The Phase 1 + Phase 2 sections below are kept
-> as a record of what was specified and what shipped; nothing in them is active.
-> **The next real milestone is Phase 3** (API Bridge — direct live handoff to a
-> target project's pipeline) — see the **Audit appendix** at the end of this file
-> for the live code-vs-roadmap status (formerly a standalone `GAP_AUDIT.md`, now
-> folded in here). The single authoritative narrative (pitch + live status + scope)
+> **Status:** **Phase 1 (Requirements Bridge), Phase 2 (Project Profiles), and
+> Phase 2.5 (Popup Accessibility/UX Polish) are feature-complete and test-pinned**
+> (297 tests passing — 104 extension + 193 middleware). Phase 1's two former
+> blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and **P1-6 File Export**
+> (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) → P2-2
+> (`ProfileManager`) → P2-3 (profile-selection UI, `e79432c`) → P2-4 (per-profile
+> artifact templates). Phase 2.5 (popup UX/accessibility polish) shipped all 10
+> A-items (A1–A10) across 7 commits on branch `phase-2` (see the Phase 2.5
+> section below for the commit log and patterns established). The Phase 1 + Phase 2
+> + Phase 2.5 sections below are kept as a record of what was specified and what
+> shipped; nothing in them is active. **The next real milestone is Phase 3** (API
+> Bridge — direct live handoff to a target project's pipeline) — see the **Audit
+> appendix** at the end of this file for the live code-vs-roadmap status (formerly
+> a standalone `GAP_AUDIT.md`, now folded in here). The single authoritative
+> narrative (pitch + live status + scope)
 > lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
 
 ---
@@ -259,8 +263,9 @@ profile's conventions. For the `example` profile that means:
 ## Phase 2: Project Profiles + Multi-Project Support ✅ complete (2026-07-10)
 
 > All four P2 tasks shipped: P2-1 (profile schema) → P2-2 (`ProfileManager`) →
-> P2-3 (profile-selection UI) → P2-4 (per-profile artifact templates). 289 tests
-> green. Nothing in Phase 2 is active; the next milestone is **Phase 3** (API Bridge).
+> P2-3 (profile-selection UI, `e79432c`) → P2-4 (per-profile artifact templates).
+> Commits on `phase-2`. 297 tests green (104 ext + 193 mw). Nothing in Phase 2 is
+> active. P2.5 (popup a11y/UX polish) is also done — see below.
 
 (**Reframed** under the new model: Phase 2 matures the registry from Phase 1's
 manual/origin-based selection into a richer profile system. Most of this stays as
@@ -340,7 +345,7 @@ not only provider-side config.)
 
 ---
 
-## Phase 2.5: Extension UI/UX Polish (audit-driven)
+## Phase 2.5: Extension UI/UX Polish (audit-driven) ✅ complete (2026-07-10)
 
 **Added**: 2026-07-10, from a `ui-ux-pro-max` skill review of the popup
 (`extension/popup/App.tsx` — React + Tailwind, Chrome extension). The skill is
@@ -349,10 +354,56 @@ app-platform-oriented, so only its stack-agnostic Quick Reference checklist
 applies; the RN-specific touch-gesture/safe-area rules were skipped for this web popup.
 Findings below are anchored to the skill's named rules; severities are the skill's.
 
-> Not blocking Phase 3. Discrete, no cross-task deps; pick any subset. Files: the
-> whole pass is in `App.tsx` (+ one small CSS token pass in `popup/styles.css`).
-> Extension tests today: `popup.profileSelection` (19), `popup.requirements` (17),
-> `apply` (10), `diff` (7), `projectRegistry` (30), `sanitize` (13) — keep green.
+> ✅ **P2.5 complete — all 10 A-items shipped across 7 commits on `phase-2`,
+> 297 tests green (104 ext + 193 mw), `tsc --noEmit` clean.**
+>
+> **Commit log (ordered A1–A10):**
+> - `385f255` "P2.5 — popup polish": A1 (role=alert on error), A2 (Modal replaces
+>   `window.confirm()`, `components/Modal.tsx`), A3 (Feather SVG icons replace emoji
+>   headers), A8 (stable keys — `key={hint}`/`{scenario}`/`{edgeCase}`), A10
+>   (`cursor-pointer` + `focus-visible:ring` on buttons/selects).
+> - `9d81ca7` "P2.5 A5": A5 (success channel — green `role="status"` `aria-live="polite"`
+>   banner + `showSuccess()` with 4 s auto-dismiss, separate from red error channel).
+> - `a0f82cb`: A4 (visible `<label>` + `sr-only` spans for the four placeholder-only
+>   inputs: Add-project path, instruction textarea, manual source-pick).
+> - `7a6c964`: A6 (stable loading region — `min-h-[7rem]` outer block + always-mounted
+>   `<pre>` with `min-h-[4rem]` + "streaming…" placeholder; eliminates CLS).
+> - `6f1e5f4`: doc-only — flipped the six stale checkboxes (A1/A2/A3/A5/A8/A10) that
+>   had been committed-but-unchecked in the earlier commits.
+> - `8ab6ebb`: A9 (Undo Last Change gated behind the Modal — `showModal()` with
+>   "reverts the most recent git commit" confirmation; green "Undid last change."
+>   success toast; button demoted to muted gray `text-xs text-gray-500`).
+> - `63c8ac1`: A7 (Project promoted to header — `<label>Project</label><select>` peer
+>   of Profile; `<details>` repurposed to "Manage projects" with SVG chevron disclosure
+>   affordance, `aria-expanded` native to `<details>`).
+>
+> **UX/accessibility patterns established** (baseline for future popup work):
+> - **Destructive actions** → confirm Modal (`showModal()`) with what-will-happen text.
+>   The Modal is focus-trapped, Esc-cancellable (`components/Modal.tsx`).
+> - **Success** → `showSuccess(msg)` (green `role="status"` `aria-live="polite"`,
+>   4 s auto-dismiss).
+> - **Errors** → `setError(msg)` (red `role="alert"`, persisted until dismissed).
+> - **Loading** → `min-h` skeleton + always-mounted `<pre>` to prevent CLS.
+> - **Inputs** → `<label>` wrapping with visible text or `sr-only` span; never
+>   placeholder-only.
+> - **Icons** → inline Feather SVG, no emoji as structural icons (`aria-hidden`).
+> - **Keys** → stable identifiers (item text), never array index.
+> - **Focus** → `focus-visible:ring-2 ring-blue-400 outline-none` on all custom
+>   controls; `cursor-pointer` on clickable non-links.
+> - **Layout** → sibling controls in `<label className="flex items-center gap-1">`
+>   groups; `ml-auto` for right-side header items.
+>
+> **How to pick this up in a new session:**
+> - Branch: `phase-2` (checkout `phase-2` — the seven P2.5 commits are on it).
+> - Verify gate: `npm run typecheck` clean + `npm test` in both `extension/` and
+>   `middleware/` → 104 ext + 193 mw = 297 must be green before any commit.
+> - Code: all P2.5 work is in `ai-ui-editor/extension/popup/App.tsx` +
+>   `components/Modal.tsx` (one component).
+> - Tests: `__tests__/popup.modal.test.ts` (85), `popup.profileSelection` (19),
+>   `popup.requirements` (17), `apply` (10), `diff` (7), `projectRegistry` (30),
+>   `sanitize` (13).
+> - Next steps: see Phase 3 (API Bridge) in this file; or address the Phase 1.5
+>   cleanup items (P1.5-1…P1.5-4) if they remain open.
 
 ### 🔴 Critical
 
@@ -546,7 +597,7 @@ coupling to the target project's *internal* API begins — Phase 1 deliberately 
 3. **P1-8 testing stretch goals** — most of P1-8's checklist is already covered by the
    tests landed with the two commits; only an end-to-end test remains.
 
-The next real milestone is **Phase 2** (richer profile system on top of the P1-0 registry).
+Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — see above.
 
 ### Shipped (verified against code, 2026-07-05)
 
@@ -611,7 +662,7 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 
 ### Test results (re-verified 2026-07-10)
 
-> All green. **193 middleware + 96 extension = 289 tests passing.** Both packages
+> All green. **193 middleware + 104 extension = 297 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
 > file list; its count is included in the middleware total.)
@@ -686,7 +737,7 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
   Tests: `PromptTemplates.requirements.test.ts` (+5 → 17) + `appendIdeas.test.ts` (+8 → 23,
   incl. a scaffolded-spec integration case against the example profile). Drifted pre-P2-4
   row counts (`ProfileManager` 35→19, `ProjectProfiles` 19→32) corrected against the live
-  reporter. → **193 middleware + 96 extension = 289 tests**. **P2-4 complete → Phase 2
+  reporter. → **193 middleware + 104 extension = 297 tests**. **P2-4 + P2.5 complete → Phase 2
   done.** Next: Phase 3 (API Bridge) or the deferred E2E harness / DevTools panel wiring.
 
 ---
