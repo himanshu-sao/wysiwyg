@@ -193,7 +193,7 @@ const App: React.FC = () => {
             setTokenBuffer('');
             break;
           }
-          // P1-6: Check for append-ideas export success response.
+          // P1-6: Check for append-ideas export success response, or an undo result.
           if (typeof data.success === 'boolean') {
             // Could be either a validation result (already handled above with
             // pendingWriteRef) or an append-ideas result. Append-ideas has `id`
@@ -205,6 +205,15 @@ const App: React.FC = () => {
               } else {
                 setError(`Export conflict: ${data.error || data.id}`);
               }
+            } else if (data.success) {
+              // A9: /api/git/undo replies with {success, message} (no id/specPath).
+              // Surface it so a revert isn't a silent click; the Modal already
+              // gated the destructive intent before the request was sent.
+              showSuccess(data.message || 'Undid last change.');
+            } else {
+              // A non-export failure with no id (e.g. a 200/success:false undo).
+              // HTTP failures arrive via the server-error case instead.
+              setError(data.error || 'Undo failed');
             }
             setLoading(false);
             setProgress('');
@@ -640,14 +649,26 @@ const App: React.FC = () => {
     pendingWriteRef.current = null;
   }
 
+  // A9: Undo reverts a git commit (discards committed work with no salvage
+  // here) — route it through the same confirmation Modal as Apply/Export
+  // rather than firing on one unguarded click. On success the message listener
+  // shows a green "Undid last change." toast (A5 success channel); on HTTP
+  // failure the relay's server-error path surfaces a red error.
   function handleUndo() {
-    chrome.runtime.sendMessage({
-      type: 'send-to-server',
-      data: {
-        endpoint: '/api/git/undo',
-        body: { projectRoot: effectiveProjectRoot() },
-      },
-    });
+    showModal(
+      'Undo the last change? This reverts the most recent git commit — it can\'t be redone here.',
+      'Undo',
+      () => {
+        closeModal();
+        chrome.runtime.sendMessage({
+          type: 'send-to-server',
+          data: {
+            endpoint: '/api/git/undo',
+            body: { projectRoot: effectiveProjectRoot() },
+          },
+        });
+      }
+    );
   }
 
   if (!elementContext) {
@@ -1013,9 +1034,11 @@ const App: React.FC = () => {
       )}
 
       <div className="mt-4 pt-4 border-t">
+        {/* A9: demoted to a subordinate, muted treatment (the confirm Modal
+            now carries the destructive emphasis, not the button itself). */}
         <button
           onClick={handleUndo}
-          className="text-sm text-red-600 hover:text-red-800 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
+          className="text-xs text-gray-500 hover:text-gray-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
         >
           Undo Last Change
         </button>

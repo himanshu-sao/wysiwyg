@@ -356,17 +356,17 @@ Findings below are anchored to the skill's named rules; severities are the skill
 
 ### 🔴 Critical
 
-- [ ] **A1 — Announce errors to assistive tech.** The error banner (`App.tsx`:-22ish,
+- [x] **A1 — Announce errors to assistive tech.** The error banner (`App.tsx`:-22ish,
       the `<div className="… text-red-700 whitespace-pre-wrap">`) is visual-only.
       Add `role="alert"` (or `aria-live="polite"`). Skill: Quick Reference §1
       `aria-live-errors`; `ux` domain "Error Messages must be announced" (High).
-- [ ] **A2 — Replace native `confirm()` with an in-app modal.** `handleApply`
+- [x] **A2 — Replace native `confirm()` with an in-app modal.** `handleApply`
       (`confirm("Apply this change…")`) and `handleExport`
       (`confirm("Export this specification…")`) both use the browser dialog.
       Build a styled, Esc-to-cancel, focus-trapped confirmation modal in the popup
       consistent with the rest of the UI. Skill: §1 `escape-routes`, §8
       `confirmation-dialogs`, Common Rules "Modal/Sheet".
-- [ ] **A3 — Drop emoji structural icons; use inline SVG.** `📁 Files to Modify`,
+- [x] **A3 — Drop emoji structural icons; use inline SVG.** `📁 Files to Modify`,
       `✅ Test Scenarios`, `⚠️ Edge Cases` (the three spec-section header emojis)
       don't theme, render inconsistently, and can't be controlled by tokens.
       Replace with Lucide (`file-pen` / `circle-check` / `triangle-alert`) plus
@@ -381,7 +381,7 @@ Findings below are anchored to the skill's named rules; severities are the skill
       text (the `Title`/`Priority` fields already do — match them; for the textarea
       an `sr-only` label works). Skill: §8 `input-labels`; `ux` "Form Labels"
       (High).
-- [ ] **A5 — Separate the success channel from `error`.** Today `error` carries
+- [x] **A5 — Separate the success channel from `error`.** Today `error` carries
       *both* failures (`App.tsx:131 setError("Export conflict…")`) and successes
       (`:131 setError("Exported as ${id}…")`), so a successful export renders in a
       red banner. Add a `success`/`toast` state (green, aria-live, auto-dismiss
@@ -402,16 +402,16 @@ Findings below are anchored to the skill's named rules; severities are the skill
       in `<details>` with no chevron or `aria-expanded`. Skill: §9
       `destructive-nav-separation` is N/A, but the consistency/`nav-hierarchy`
       argument applies. (Lower priority: this is partly a product call.)
-- [ ] **A8 — Stable list keys (not array index).** `key={i}` on the
+- [x] **A8 — Stable list keys (not array index).** `key={i}` on the
       architecture-hints / test-scenarios / edge-cases lists. Use the item text
       or a generated id. Skill: `react` stack "Use stable IDs as keys; Don't:
       array index as key for dynamic lists".
-- [ ] **A9 — Rethink the destructive-action confirm weighting.** Apply and Export
+- [x] **A9 — Rethink the destructive-action confirm weighting.** Apply and Export
       both `confirm()`, but `Undo Last Change` (reverts a git commit) is one unguarded
       click. Either confirm undo, or keep it clickable but show a brief
       "Undid: …" success feedback and make it visually subordinate. Skill: §8
       `confirmation-dialogs`, `destructive-emphasis`; §9 `destructive-nav-separation`.
-- [ ] **A10 — `cursor-pointer` + visible focus-visible rings on custom buttons
+- [x] **A10 — `cursor-pointer` + visible focus-visible rings on custom buttons
       and the profile/project selects.** Tailwind preflight can suppress UA focus
       rings; add a `focus-visible:ring` utility. Skill: §1 `focus-states`, §2
       `cursor-pointer`.
