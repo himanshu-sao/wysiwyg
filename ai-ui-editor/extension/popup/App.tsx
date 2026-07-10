@@ -63,6 +63,27 @@ const App: React.FC = () => {
   // single staged status line. Reset whenever a non-token stage arrives.
   const [tokenBuffer, setTokenBuffer] = useState('');
   const [error, setError] = useState('');
+  // A5: Separate success channel from error. Today error carries both failures
+  // and successes ("Exported as ID-001…" in red). A success state (green,
+  // aria-live="polite", auto-dismiss after 4s) keeps the two channels distinct.
+  const [success, setSuccess] = useState('');
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearMessages() {
+    setError('');
+    setSuccess('');
+  }
+
+  function showSuccess(msg: string) {
+    // Clear any pending auto-dismiss timer before starting a new one.
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSuccess(msg);
+    setError('');
+    successTimerRef.current = setTimeout(() => {
+      setSuccess('');
+      successTimerRef.current = null;
+    }, 4000);
+  }
   // P7 / MVP-18: when sourcemap resolution fails the middleware asks us to let
   // the user pick a file manually. The picked path + content override the diff
   // base (highest precedence) — distinct from the auto-resolved source so a
@@ -145,7 +166,7 @@ const App: React.FC = () => {
             const pending = pendingWriteRef.current;
             if (data.valid) {
               doWrite(pending.file, pending.content, pending.commitMessage);
-              setError('');
+              clearMessages();
             } else {
               const msgs = (data.errors || [])
                 .map((e: any) => `${e.file}:${e.line}:${e.column} ${e.message}`)
@@ -178,9 +199,9 @@ const App: React.FC = () => {
             // pendingWriteRef) or an append-ideas result. Append-ideas has `id`
             // and `specPath`; validation has `valid` and `errors`.
             if (typeof data.id === 'string') {
-              // append-ideas success (201) or idempotency conflict (409).
+              // A5: success channel (green, auto-dismiss) vs error (red, persisted).
               if (data.success) {
-                setError(`Exported as ${data.id} → ${data.specPath || data.id}`);
+                showSuccess(`Exported as ${data.id} → ${data.specPath || data.id}`);
               } else {
                 setError(`Export conflict: ${data.error || data.id}`);
               }
@@ -282,6 +303,11 @@ const App: React.FC = () => {
       if (messageListenerRef.current) {
         chrome.runtime.onMessage.removeListener(messageListenerRef.current);
         messageListenerRef.current = null;
+      }
+      // A5: clear the success auto-dismiss timer so it doesn't fire after unmount.
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
       }
     };
   }, []);
@@ -414,7 +440,7 @@ const App: React.FC = () => {
     if (!elementContext || !instruction.trim()) return;
 
     setLoading(true);
-    setError('');
+    clearMessages();
     setOptions([]);
     setNeedsFileSelection(false);
     // A manual pick belongs to the previous element/instruction; clear it so a
@@ -537,7 +563,7 @@ const App: React.FC = () => {
         }
 
         setLoading(true);
-        setError('');
+        clearMessages();
 
         chrome.runtime.sendMessage({
           type: 'send-to-server',
@@ -579,7 +605,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!pickedFile.trim()) return;
     setPickingFile(true);
-    setError('');
+    clearMessages();
     // The background 'send-to-server' relay only POSTs JSON bodies; /read is a
     // GET, so we fetch directly from the popup (CORS allows chrome-extension
     // origin; the sample project root comes from the captured element context).
@@ -596,7 +622,7 @@ const App: React.FC = () => {
       const data = await res.json();
       setPickedFileContent(data.content || '');
       setNeedsFileSelection(false);
-      setError('');
+      clearMessages();
     } catch (err: any) {
       setError(`Failed to read file: ${err.message}`);
     }
@@ -791,6 +817,14 @@ const App: React.FC = () => {
       {error && (
         <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 whitespace-pre-wrap">
           {error}
+        </div>
+      )}
+
+      {/* A5: Success channel separate from error — green, aria-live="polite",
+          auto-dismissed by showSuccess() after 4s. */}
+      {success && (
+        <div role="status" aria-live="polite" className="mb-4 p-3 bg-green-50 border border-green-200 rounded text-xs text-green-700 whitespace-pre-wrap">
+          {success}
         </div>
       )}
 
