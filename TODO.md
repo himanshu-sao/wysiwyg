@@ -1,16 +1,20 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-05 (Phase 1 Requirements Bridge shipped — see "What landed")
+**Last revised**: 2026-07-10 (Phase 2 complete — P2-1…P2-4 shipped; 289 tests; see Audit appendix)
 
-> **Status:** **Phase 1 (Requirements Bridge) is feature-complete and test-pinned**
-> (221 tests passing). The two former blockers shipped: **P1-0 Project Registry**
-> (`e9d2b91`) and **P1-6 File Export** (`acb45ab`). The Phase 1 sections below are kept
-> as a record of what was specified and what shipped; nothing in Phase 1 is active.
-> **The next real milestone is Phase 2** (richer profile system on the P1-0 registry) —
-> see the **Audit appendix** at the end of this file for the live code-vs-roadmap status
-> (formerly a standalone `GAP_AUDIT.md`, now folded in here). The single authoritative
-> narrative (pitch + live status + scope) lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+> **Status:** **Phase 1 (Requirements Bridge) and Phase 2 (Project Profiles +
+> Multi-Project Support) are feature-complete and test-pinned** (289 tests passing).
+> Phase 1's two former blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and
+> **P1-6 File Export** (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) →
+> P2-2 (`ProfileManager`) → P2-3 (profile-selection UI, `e79432c`) → P2-4
+> (per-profile artifact templates). The Phase 1 + Phase 2 sections below are kept
+> as a record of what was specified and what shipped; nothing in them is active.
+> **The next real milestone is Phase 3** (API Bridge — direct live handoff to a
+> target project's pipeline) — see the **Audit appendix** at the end of this file
+> for the live code-vs-roadmap status (formerly a standalone `GAP_AUDIT.md`, now
+> folded in here). The single authoritative narrative (pitch + live status + scope)
+> lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
 
 ---
 
@@ -252,7 +256,11 @@ profile's conventions. For the `example` profile that means:
 
 ---
 
-## Phase 2: Project Profiles + Multi-Project Support
+## Phase 2: Project Profiles + Multi-Project Support ✅ complete (2026-07-10)
+
+> All four P2 tasks shipped: P2-1 (profile schema) → P2-2 (`ProfileManager`) →
+> P2-3 (profile-selection UI) → P2-4 (per-profile artifact templates). 289 tests
+> green. Nothing in Phase 2 is active; the next milestone is **Phase 3** (API Bridge).
 
 (**Reframed** under the new model: Phase 2 matures the registry from Phase 1's
 manual/origin-based selection into a richer profile system. Most of this stays as
@@ -295,14 +303,40 @@ not only provider-side config.)
     from `'example' | 'generic'` to `string` so JSON-loaded profiles can be referenced.
   - Tests: `ProfileManager.test.ts` (35 tests, all passing).
 
-### P2-3: UI for Profile Selection
-- [ ] Profile/project dropdown in popup (driven by the registry, not just URL detection).
-- [ ] Persist last-used profile per origin.
+### P2-3: UI for Profile Selection ✅ shipped (2026-07-10)
+- [x] Profile/project dropdown in popup (first-class UI in header bar, visible at all
+      times — not buried in `<details>`). Fetches available profiles from
+      `GET /api/files/profiles` (built-in + JSON-loaded).
+- [x] Persist last-used profile per origin (`profilePrefs` in `chrome.storage.local`,
+      restored via `useEffect` keyed on `currentOrigin` — race condition fixed).
+- [x] Tests: `popup.profileSelection.test.ts` (19) + `api.test.ts` (+1 profiles endpoint).
+  - Commit `e79432c`.
 
-### P2-4: Output Customization
-- [ ] Per-profile output paths (already in `ProjectProfile.directories`).
-- [ ] Per-profile artifact templates (match the project's real spec.md sections — e.g.
-      the example profile's Overview/Requirements/Scope/Edge Cases/Constraints sections).
+### P2-4: Output Customization ✅ shipped (2026-07-10)
+- [x] Per-profile output paths (already in `ProjectProfile.directories`).
+  - Verified, not extended: `appendRequirements` already reads `intakeFile` +
+    `directories.requirements` from the resolved profile (`files.ts`), so each
+    profile's write lands in its own paths. (Writing secondary artifacts —
+    `architecture.md`/`tests.md` from `architectureHints`/`testScenarios` — is
+    deferred; only `spec.md` is written today. That's a deliberate scope hold,
+    noted here so it isn't a silent gap.)
+- [x] Per-profile artifact templates: inject `artifactTemplates` sections into
+      the requirements prompt (replace hardcoded Overview/Requirements/Edge
+      Cases/Acceptance Criteria) and into the `spec.md` scaffold (supplement
+      missing sections so output always matches the profile's expected structure).
+  - `PromptTemplates.specSectionsFor(profile)` is now the single source of truth
+    for the spec section set: it reads the profile's `artifactTemplates` `spec.md`
+    entry and falls back to the legacy four (`Overview`/`Requirements`/`Edge Cases`/
+    `Acceptance Criteria`) when the profile has no template. `getRequirementsPrompt`
+    uses it for both the `spec` JSON example and the `**spec**` guideline — the
+    hardcoded four are gone.
+  - `files.ts.supplementSpecSections(spec, profile)` is wired into `appendRequirements`:
+    any expected section missing from the AI's spec is appended as
+    `## <Section>\n\n_TBD.` so the written `spec.md` always matches the profile's
+    structure, while AI-authored content is kept verbatim. Heading-based presence
+    detection (case-insensitive, tolerant of trailing `:`/parenthetical/numbering).
+  - Tests: `PromptTemplates.requirements.test.ts` (+7) + `appendIdeas.test.ts`
+    (+6 incl. a scaffolded-spec integration case). 180 → 193 middleware tests.
 
 ---
 
@@ -490,38 +524,44 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 | Integration tests for the project registry (P1-0) | ✅ `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9) + ext `projectRegistry.test.ts` (30). |
 | E2E: register project → right-click → export → verify `ideas.md` line + `requirements/ID/spec.md` created | ⏸️ **Not done.** No E2E harness exists; would require a running browser + a temp git project. Deferred until an E2E layer is added. |
 
-### Test results (re-verified 2026-07-05)
+### Test results (re-verified 2026-07-10)
 
-> All green. **179 middleware + 77 extension = 256 tests passing.** Both packages
+> All green. **193 middleware + 96 extension = 289 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
 > file list; its count is included in the middleware total.)
+>
+> *(The pre-P2-4 table had drifted — `ProfileManager.test.ts` and
+> `ProjectProfiles.test.ts` row counts were off; corrected here against the live
+> `vitest` reporter. P2-4 added `PromptTemplates.requirements.test.ts` +5 and
+> `appendIdeas.test.ts` +8.)*
 
 | Project | File | Tests | Status |
 |---------|------|-------|--------|
-| Middleware | `api.test.ts` | 3 | ✅ |
-| Middleware | `appendIdeas.test.ts` *(P1-6)* | 15 | ✅ |
+| Middleware | `api.test.ts` *(P2-3: +1 profiles endpoint)* | 4 | ✅ |
+| Middleware | `appendIdeas.test.ts` *(P1-6 + P2-4 supplement)* | 23 | ✅ |
 | Middleware | `OpencodeClient.models.test.ts` *(P1-7)* | 9 | ✅ |
 | Middleware | `OpencodeClient.normalizePriority.test.ts` *(P1-6)* | 6 | ✅ |
 | Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
-| Middleware | `ProfileManager.test.ts` *(P2-2)* | 35 | ✅ |
+| Middleware | `ProfileManager.test.ts` *(P2-2)* | 19 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
-| Middleware | `ProjectProfiles.test.ts` | 19 | ✅ |
-| Middleware | `PromptTemplates.requirements.test.ts` | 12 | ✅ |
+| Middleware | `ProjectProfiles.test.ts` | 32 | ✅ |
+| Middleware | `PromptTemplates.requirements.test.ts` *(P2-4 +5)* | 17 | ✅ |
 | Middleware | `registryPlumbing.test.ts` *(P1-0)* | 9 | ✅ |
 | Middleware | `ResponseParser.test.ts` | 21 | ✅ |
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
-| Middleware | `docSync.test.ts` *(doc-consistency guard, re-pointed at consolidated set)* | 16 | ✅ |
+| Middleware | `docSync.test.ts` *(doc-consistency guard)* | 18 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **179** | ✅ |
+| **Middleware Total** | | **193** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
+| Extension | `popup.profileSelection.test.ts` *(P2-3)* | 19 | ✅ |
 | Extension | `popup.requirements.test.ts` | 17 | ✅ |
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
-| **Extension Total** | | **77** | ✅ |
-| **Grand Total** | | **256** | ✅ |
+| **Extension Total** | | **96** | ✅ |
+| **Grand Total** | | **289** | ✅ |
 
 ### How this audit changed
 
@@ -540,6 +580,29 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
   routes `ai.ts` and `files.ts` wired to `ProfileManager.resolve()`. `RegisteredProjectRef`
   type mirrored. `ProfileManager.test.ts` (+35 tests → 256). **P2-1/P2-2 complete.**
   Next: P2-3 (profile dropdown UI) + P2-4 (artifact template injection).
+- **2026-07-10 (P2-3):** Profile Selection UI shipped (`e79432c`). Profile dropdown moved
+  from hidden `<details>` to header bar (first-class control, visible at all times). Label
+  "Profile" (was "Profile template"); title shows profile name in Export mode. Race condition
+  fixed: `profilePrefs` restores in `useEffect` keyed on `[currentOrigin]` with one-shot
+  `profilePrefsLoadedRef` — no more reading storage before async `get-current-element` sets
+  the origin. `popup.profileSelection.test.ts` (+19 tests) + `api.test.ts` (+1 profiles
+  endpoint test) → **276 tests**. **P2-3 complete.** Next: P2-4 (artifact template injection).
+- **2026-07-10 (P2-4):** Output Customization shipped. The spec section set is now
+  profile-driven end-to-end: `PromptTemplates.specSectionsFor(profile)` (single source of
+  truth) reads the profile's `artifactTemplates` `spec.md` entry and falls back to the
+  legacy four (`Overview`/`Requirements`/`Edge Cases`/`Acceptance Criteria`) when absent.
+  `getRequirementsPrompt` uses it for both the `spec` JSON example + the `**spec**`
+  guideline (hardcoded four removed). `files.ts.supplementSpecSections(spec, profile)` is
+  wired into `appendRequirements`: any expected section the AI omitted is appended as
+  `## <Section>\n\n_TBD.` so the written `spec.md` always matches the profile's structure
+  while AI content is kept verbatim — heading-based presence detection (case-insensitive,
+  tolerant of trailing `:`/parenthetical/numbering). Part 1 (per-profile output paths)
+  was already wired; verified, not extended (secondary-artifact writing deferred).
+  Tests: `PromptTemplates.requirements.test.ts` (+5 → 17) + `appendIdeas.test.ts` (+8 → 23,
+  incl. a scaffolded-spec integration case against the example profile). Drifted pre-P2-4
+  row counts (`ProfileManager` 35→19, `ProjectProfiles` 19→32) corrected against the live
+  reporter. → **193 middleware + 96 extension = 289 tests**. **P2-4 complete → Phase 2
+  done.** Next: Phase 3 (API Bridge) or the deferred E2E harness / DevTools panel wiring.
 
 ---
 

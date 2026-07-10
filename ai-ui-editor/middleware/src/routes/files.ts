@@ -7,8 +7,51 @@ import { WriteResponse, ValidateResponse, ReadResponse, ProbeRootResponse } from
 import { validateDiff } from '../services/DiffValidator';
 import { writeFileWithGit, writeFilesWithGit, type FileEntry } from '../services/GitManager';
 import { safeFilePath, resolveProjectRoot } from '../services/PathSanitizer';
-import { getProfile } from '../config/project-profiles';
+import { getProfile, type ProjectProfile } from '../config/project-profiles';
 import { ProfileManager } from '../services/ProfileManager';
+import { specSectionsFor } from '../ai/PromptTemplates';
+
+/**
+ * P2-4: placeholder appended under any section heading the profile expects but
+ * the AI's spec omitted, so the written spec.md always matches the project's
+ * expected structure. Short and obviously-not-final so a human or downstream
+ * agent immediately knows it's a gap to fill.
+ */
+export const MISSING_SECTION_PLACEHOLDER = '_TBD.';
+
+/**
+ * P2-4: escape the regex metacharacters in a section name before heading-
+ * matching. Section names are plain prose (e.g. `PII-Secret Handling`) so we
+ * don't expect metacharacters, but be safe rather than sorry.
+ */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * P2-4: ensure the written spec.md contains every section the active profile
+ * expects. Sections the AI emitted are kept verbatim; any expected section the
+ * AI omitted is appended at the bottom as `## <Section>\n\n${MISSING_SECTION_PLACEHOLDER}`.
+ * When the profile has no spec.md template (`artifactTemplates` omitted / no
+ * `spec.md` entry / empty sections), the spec is returned unchanged — backward
+ * compatible with profiles that predate P2-4.
+ *
+ * Section presence is heading-based: a section is "present" iff the spec already
+ * contains a markdown heading whose text matches the expected section name
+ * (case-insensitive, word-boundary, tolerant of trailing `:`/parenthetical/
+ * numbering text), e.g. `## Requirements (must be testable)` satisfies
+ * `Requirements`. Exported for unit testing.
+ */
+export function supplementSpecSections(spec: string, profile: ProjectProfile): string {
+  const sections = specSectionsFor(profile);
+  const missing = sections.filter((s) => {
+    const re = new RegExp(`^#{1,6}\\s+${escapeRegExp(s)}\\b`, 'im');
+    return !re.test(spec);
+  });
+  if (missing.length === 0) return spec;
+  const tail = missing.map((s) => `## ${s}\n\n${MISSING_SECTION_PLACEHOLDER}`).join('\n\n');
+  return `${spec.replace(/\n*$/, '\n\n')}${tail}\n`;
+}
 
 // P2-2: registry-aware profile resolver. Supersedes the plain `getProfile(name)`
 // call in appendRequirements when a registered project is supplied; falls back to
@@ -194,8 +237,10 @@ export async function appendRequirements(
   const ideasLine = `- [${id}] ${title} | Priority: ${priority}`;
 
   // Build the spec body: a header insertion that adds the ID and metadata
-  // at the top of the spec, then the body.
-  const specBody = `# ${title} (${id})\n\n> Priority: ${priority} | Exported by wysiwyg\n\n${req.spec}`;
+  // at the top of the spec, then the body. P2-4: supplement any section the
+  // profile expects that the AI omitted with `_TBD.` placeholders so the
+  // written spec.md always matches the project's expected structure.
+  const specBody = `# ${title} (${id})\n\n> Priority: ${priority} | Exported by wysiwyg\n\n${supplementSpecSections(req.spec, profile)}`;
 
   // Read the current ideas.md content, append the line, and write both files
   // in a single atomic commit.

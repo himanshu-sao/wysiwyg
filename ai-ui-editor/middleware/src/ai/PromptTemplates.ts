@@ -1,6 +1,47 @@
 import { ElementContext, EditContext } from '../shared/types';
 import type { ProjectProfile } from '../config/project-profiles';
 
+/**
+ * P2-4: The spec section set the AI must emit, in order. Driven by the active
+ * profile's `artifactTemplates` `spec.md` entry; falls back to the legacy four
+ * (`Overview`, `Requirements`, `Edge Cases`, `Acceptance Criteria`) when the
+ * profile has no `spec.md` template (e.g. `artifactTemplates` omitted, or no
+ * entry named `spec.md`, or an entry with an empty `sections` list). This is
+ * the single source of truth — `routes/files.ts` reuses it for the spec.md
+ * missing-section scaffold so the prompt and the writer can't drift apart.
+ */
+export const SPEC_SECTIONS_FALLBACK = [
+  'Overview',
+  'Requirements',
+  'Edge Cases',
+  'Acceptance Criteria',
+];
+
+export function specSectionsFor(profile: ProjectProfile): string[] {
+  const specTemplate = profile.artifactTemplates?.find((t) => t.name === 'spec.md');
+  return specTemplate && specTemplate.sections.length > 0
+    ? specTemplate.sections
+    : SPEC_SECTIONS_FALLBACK;
+}
+
+/**
+ * P2-4: render the `spec` example string used in the requirements prompt's
+ * Output Format block. Heading set + order come from `specSectionsFor(profile)`.
+ * The first two sections get a small filled example; the rest are `_TBD._`
+ * placeholders, so the model sees the exact structure it should produce.
+ */
+function exampleSpecString(profile: ProjectProfile): string {
+  const sections = specSectionsFor(profile);
+  const bodies: Record<string, string> = {
+    Overview: 'Clear description of the change.',
+    Requirements: '1. Functional requirement…\n2. Another requirement…',
+  };
+  const block = sections
+    .map((s) => `## ${s}\n\n${bodies[s] ?? '_TBD.'}`)
+    .join('\n\n');
+  return `# Specification\n\n${block}`;
+}
+
 export function getEditPrompt(
   element: ElementContext,
   instruction: string,
@@ -77,6 +118,12 @@ export function getRequirementsPrompt(
   const classes = element.classNames.join(' ');
   const hierarchy = element.hierarchy.join(' > ');
 
+  // P2-4: the spec section set comes from the profile's artifactTemplates
+  // (spec.md entry), not a hardcoded four. The example + guideline below both
+  // reflect it so the model's output structure matches the project's template.
+  const specSections = specSectionsFor(profile);
+  const specExample = exampleSpecString(profile).replace(/\n/g, '\\n');
+
   return `
 You are a requirements engineer for the ${profile.name} project.
 
@@ -101,7 +148,7 @@ Generate a structured specification for implementing this feature/requirement. T
 {
   "title": "Short, imperative title for the requirement (3-8 words)",
   "priority": "High" | "Medium" | "Low",
-  "spec": "# Specification\\n\\n## Overview\\nClear description...\\n\\n## Requirements\\n1. Functional requirements...\\n\\n## Edge Cases\\nEdge cases...\\n\\n## Acceptance Criteria\\nCriteria...",
+  "spec": "${specExample}",
   "architectureHints": ["src/components/NewComponent.tsx", "api/routes/newRoute.ts"],
   "testScenarios": ["Should render correctly", "Should handle user input", "Should error gracefully"],
   "edgeCases": ["Empty state", "Network failure", "Invalid input"]
@@ -110,7 +157,7 @@ Generate a structured specification for implementing this feature/requirement. T
 ## Guidelines
 1. **title**: A concise, human-readable title for this requirement. It will appear as the summary line in the project's backlog (e.g. \`- [ID-XXX] {title} | Priority: {priority}\`). Keep it short and imperative — no trailing period.
 2. **priority**: One of "High", "Medium", or "Low". Judge by user impact, risk, and dependency: High for user-facing/blocking changes, Medium for normal features, Low for nice-to-haves.
-3. **spec**: A complete markdown specification with Overview, Requirements (numbered, testable), Edge Cases, and Acceptance Criteria
+3. **spec**: A complete markdown specification with these sections, in order: ${specSections.join(', ')}. Number the Requirements items and make them testable. Fill every section — if a section genuinely does not apply, write "_N/A — <reason>." under that heading so the downstream agent isn't guessing at the structure.
 4. **architectureHints**: File paths that will likely need to be created or modified (use project's directory conventions: ${JSON.stringify(profile.directories)})
 5. **testScenarios**: Specific test cases covering happy path, error cases, and edge cases
 6. **edgeCases**: Unusual scenarios the implementation should handle

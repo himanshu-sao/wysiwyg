@@ -211,9 +211,16 @@ interface ProjectProfile {
 - **Intake line** (default `intakeLineFormat.template`):
   `- [${id}] ${title} | Priority: ${priority}` — appended to the `intakeFile`.
 - A matching `requirements/${id}/spec.md` is written with the spec body in the
-  same atomic git commit (undoable via `/api/git/undo`). The spec header sections
-  are driven by `artifactTemplates[spec.md].sections` once P2-4 lands; today
-  the prompt hardcodes Overview/Requirements/Edge Cases/Acceptance Criteria.
+  same atomic git commit (undoable via `/api/git/undo`). **P2-4**: the spec
+  section set is profile-driven end-to-end. `PromptTemplates.specSectionsFor(profile)`
+  reads `artifactTemplates[spec.md].sections` (falling back to Overview/
+  Requirements/Edge Cases/Acceptance Criteria when the profile has no template);
+  `getRequirementsPrompt` uses it for the `spec` example + the `**spec**`
+  guideline, and `files.ts` `supplementSpecSections` appends any section the AI
+  omitted as `## <Section>\n\n_TBD.` when writing `spec.md`. (Secondary artifacts —
+  `architecture.md`/`tests.md` from `architectureHints`/`testScenarios` — are
+  **not** written yet; only `spec.md` is committed. That's a deferred extension,
+  tracked in `TODO.md` P2-4.)
 
 ---
 
