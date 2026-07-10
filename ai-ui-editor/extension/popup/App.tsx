@@ -3,6 +3,7 @@ import { EditRequest, EditOption, ExtensionMode, ProjectRegistryState, Registere
 import { applyDiff } from '../shared/diff';
 import { resolveApplyBase } from '../shared/apply';
 import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
+import { editAppliedPayload, editUndonePayload } from '../shared/editHistoryBroadcast';
 
 const App: React.FC = () => {
   const [elementContext, setElementContext] = useState<EditRequest | null>(null);
@@ -49,6 +50,22 @@ const App: React.FC = () => {
 
   // Pending write waiting on a validation result before being committed.
   const pendingWriteRef = useRef<{ file: string; content: string; commitMessage: string } | null>(null);
+
+  // P1.5-2: DevTools history-panel broadcast bookkeeping.
+  // `pendingApplyMetaRef` holds the option/instruction/element for the apply
+  // currently in flight (validate → write). On a successful /api/files/write we
+  // broadcast `edit-applied` with it and remember the id as the last applied.
+  // `pendingUndoMetaRef` flags that the last relay was an undo so the response
+  // handler can broadcast `edit-undone` for the last applied id. Response shapes
+  // of write/undo/append-ideas all carry `data.success`, so we disambiguate by
+  // which ref is set, not by the response fields.
+  const lastAppliedIdRef = useRef<string | null>(null);
+  const pendingApplyMetaRef = useRef<{
+    option: EditOption;
+    instruction: string;
+    element: EditRequest['element'] | undefined;
+  } | null>(null);
+  const pendingUndoMetaRef = useRef<boolean>(false);
 
   // P1-0: Project Registry state. The active project's on-disk `path` becomes
   // `projectRoot` for every outbound request (replacing window.location.origin).
@@ -103,6 +120,54 @@ const App: React.FC = () => {
             setTokenBuffer('');
             break;
           }
+          // P1.5-2: undo-success. `/api/git/undo` returns { success, message,
+          // commitHash } or { success:false, error }. All three server responses
+          // (write/undo/append-ideas) carry `data.success`, so we disambiguate by
+          // the pending meta ref set by `handleUndo` — not by response fields.
+          // Handling this FIRST so an undo result is never mistaken for a write
+          // or append-ideas result.
+          if (pendingUndoMetaRef.current && typeof data.success === 'boolean') {
+            pendingUndoMetaRef.current = false;
+            if (data.success) {
+              chrome.runtime.sendMessage(
+                editUndonePayload(lastAppliedIdRef.current ?? '')
+              );
+              lastAppliedIdRef.current = null;
+              setError(data.message || 'Last change undone.');
+            } else {
+              setError(`Undo failed: ${data.error || 'unknown error'}`);
+            }
+            setLoading(false);
+            setProgress('');
+            break;
+          }
+
+          // P1.5-2: apply (write) success. `/api/files/write` returns
+          // { success, commitHash } — distinguished from append-ideas (which has
+          // `id`, not `commitHash`) by the pending-apply meta ref set in
+          // handleApply and the `commitHash` field. Broadcast `edit-applied` to
+          // the DevTools history panel and remember the id as last applied.
+          if (
+            pendingApplyMetaRef.current &&
+            typeof data.success === 'boolean' &&
+            typeof data.commitHash === 'string'
+          ) {
+            const meta = pendingApplyMetaRef.current;
+            pendingApplyMetaRef.current = null;
+            if (data.success) {
+              chrome.runtime.sendMessage(
+                editAppliedPayload(meta.option, meta.instruction, meta.element)
+              );
+              lastAppliedIdRef.current = meta.option.id;
+              setError(`Applied ${meta.option.id} (${data.commitHash.slice(0, 7)}).`);
+            } else {
+              setError(`Write failed: ${data.error || 'unknown error'}`);
+            }
+            setLoading(false);
+            setProgress('');
+            break;
+          }
+
           // P1-6: Check for append-ideas export success response.
           if (typeof data.success === 'boolean') {
             // Could be either a validation result (already handled above with
@@ -379,6 +444,14 @@ const App: React.FC = () => {
     );
 
     pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
+    // P1.5-2: remember the applied option so we can broadcast `edit-applied`
+    // to the DevTools history panel once /api/files/write succeeds (the
+    // response handler consumes + clears this).
+    pendingApplyMetaRef.current = {
+      option,
+      instruction,
+      element: elementContext?.element,
+    };
   }
 
   // P1-5/P1-6: Export the edited spec to the active project's backlog via
@@ -414,7 +487,7 @@ const App: React.FC = () => {
           element: elementContext?.element,
           instruction,
           projectRoot: root,
-          projectProfile: activeProject()?.profileName as ('antikythera' | 'generic') | undefined,
+          projectProfile: activeProject()?.profileName as ('example' | 'generic') | undefined,
         },
       },
     });
@@ -468,6 +541,10 @@ const App: React.FC = () => {
   }
 
   function handleUndo() {
+    // P1.5-2: flag this relay so the server-response handler knows the next
+    // `data.success` result is an undo (not a write/append-ideas) and broadcasts
+    // `edit-undone` to the DevTools panel for the last applied edit.
+    pendingUndoMetaRef.current = true;
     chrome.runtime.sendMessage({
       type: 'send-to-server',
       data: {

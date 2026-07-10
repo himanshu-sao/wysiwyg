@@ -359,6 +359,39 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       return true;
     }
 
+    case 'undo-specific': {
+      // P1.5-2: the DevTools history panel requests an undo for a specific
+      // entry. `/api/git/undo` only undoes the *last* commit (no per-edit undo
+      // yet), so this maps to "undo last" — honest in the docs. We echo the
+      // panel-supplied entryId back as the id so the panel can mark that entry
+      // undone in its localStorage history.
+      const projectRoot = message.data?.projectRoot;
+      fetch(`${MIDDLEWARE_HTTP_URL}/api/git/undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectRoot }),
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          if (data?.success) {
+            chrome.runtime.sendMessage({
+              type: 'edit-undone',
+              data: { id: message.data?.entryId ?? '' },
+            });
+          }
+          sendResponse({ type: 'server-response', data });
+        })
+        .catch((error: any) => {
+          sendResponse({ type: 'server-error', error: error.message });
+        });
+      return true;
+    }
+
     default:
       break;
   }

@@ -231,4 +231,40 @@ describe('doc-consistency guard — consolidated set describes shipped state', (
     expect(text).not.toMatch(/\]\(GAP_AUDIT\.md\)/);
     expect(text).not.toMatch(/\]\(MVP_REQUIREMENTS\.md\)/);
   });
+
+  // ------------------------------------------------------------------
+  // P1.5-4: test-count pin. The 2026-07-09 audit found the docs advertised
+  // a stale total (221) while the actual suite had grown to 224 — and the
+  // doc's own table didn't even foot internally (rows summed to 145 but the
+  // cell said 144). This assertion pins the *current* totals so a future
+  // test-add/update without a doc bump re-breaks the guard on purpose.
+  //
+  // It is intentionally a snapshot of the *current* live totals, not a
+  // computation of them. When the totals change (a test is added/removed),
+  // update the LIVE_* constants here AND the prose in PROJECT_BRIEF.md §7 +
+  // the TODO.md test-results table at the same time. The point is to make
+  // "ship a test, forget the doc" fail loudly.
+  // ------------------------------------------------------------------
+  it('P1.5-4: TODO.md + PROJECT_BRIEF.md state the current live test totals (count pin)', async () => {
+    // Verified-as-of-2026-07-09 live totals (including THIS assertion, which
+    // itself counts as one middleware test). Bumping a test count without
+    // bumping these = guard failure (intended).
+    const LIVE_MW = 148; // middleware total (147 + this assertion)
+    const LIVE_EXT = 83; // extension total (77 + 6 in panelHistory.test.ts, P1.5-2)
+    const LIVE_GRAND = LIVE_MW + LIVE_EXT; // 231
+    const LIVE_DOCSYNC = 19; // docSync row (18 prior + this assertion)
+
+    const todo = await fs.readFile(`${REPO_ROOT}/TODO.md`, 'utf-8');
+    const brief = await fs.readFile(`${REPO_ROOT}/PROJECT_BRIEF.md`, 'utf-8');
+
+    // TODO.md states the correct totals in prose + the grand-total cell.
+    expect(todo).toMatch(new RegExp(`${LIVE_MW} middleware \\+ ${LIVE_EXT} extension = ${LIVE_GRAND}`));
+    expect(todo).toMatch(new RegExp(`\\*\\*Grand Total\\*\\* \\| \\| \\*\\*${LIVE_GRAND}\\*\\*`));
+    expect(todo).toMatch(new RegExp(`\\*\\*Middleware Total\\*\\* \\| \\| \\*\\*${LIVE_MW}\\*\\*`));
+    expect(todo).toMatch(new RegExp(`docSync\\.test\\.ts.*\\| ${LIVE_DOCSYNC} \\|`));
+
+    // PROJECT_BRIEF.md §7 status states the same grand total + middleware count.
+    expect(brief).toMatch(new RegExp(`${LIVE_GRAND} tests`));
+    expect(brief).toMatch(new RegExp(`${LIVE_MW} middleware \\+ ${LIVE_EXT} extension`));
+  });
 });
