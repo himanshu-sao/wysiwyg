@@ -133,11 +133,15 @@ export interface RequirementsExportRequest {
 // Message types for Chrome extension messaging.
 // Synced with actual usage in background.ts / popup / content-script (P9).
 // Incoming (popup → background): get-current-element, send-to-server, send-streaming-to-server, ws-send,
-//   registry-add, registry-list, registry-select-active, registry-clear-override
+//   registry-add, registry-list, registry-select-active, registry-clear-override, undo-specific
 // Outgoing (background → popup): show-popup, server-response, server-error, stream-progress, ws-message,
 //   capture-element, registry-state, registry-error
+// Cross-context (popup → devtools panel): edit-applied, edit-undone
+//   (P1.5-2: the DevTools history panel listens for these; the popup emits them
+//    on apply/undo success, and the panel's undo-specific is answered by background.)
 // P1-2: Added mode field for distinguishing css-edit vs requirements-export
 // P1-0: Added registry-* message types for the project registry handshake.
+// P1.5-2: Added edit-applied/edit-undone/undo-specific to wire the history panel.
 export interface ExtensionMessage {
   type:
     | 'show-popup'
@@ -156,7 +160,10 @@ export interface ExtensionMessage {
     | 'registry-select-active'
     | 'registry-clear-override'
     | 'registry-state'
-    | 'registry-error';
+    | 'registry-error'
+    | 'edit-applied'
+    | 'edit-undone'
+    | 'undo-specific';
   data?: any;
   error?: string;
   mode?: 'css-edit' | 'requirements-export';

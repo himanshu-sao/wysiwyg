@@ -1,16 +1,21 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-05 (Phase 1 Requirements Bridge shipped — see "What landed")
+**Last revised**: 2026-07-09 (post-Phase-1 requirements-vs-code audit; see **Phase 1.5**)
 
 > **Status:** **Phase 1 (Requirements Bridge) is feature-complete and test-pinned**
-> (221 tests passing). The two former blockers shipped: **P1-0 Project Registry**
+> (**231 tests passing** — 148 middleware + 83 extension; count corrected 2026-07-09,
+> was stale at "221"; bumped 2026-07-09 by the P1.5-2 panel-history tests). The two former blockers shipped: **P1-0 Project Registry**
 > (`e9d2b91`) and **P1-6 File Export** (`acb45ab`). The Phase 1 sections below are kept
 > as a record of what was specified and what shipped; nothing in Phase 1 is active.
-> **The next real milestone is Phase 2** (richer profile system on the P1-0 registry) —
-> see the **Audit appendix** at the end of this file for the live code-vs-roadmap status
-> (formerly a standalone `GAP_AUDIT.md`, now folded in here). The single authoritative
-> narrative (pitch + live status + scope) lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+>
+> **Before Phase 2, finish the small "Phase 1.5" cleanup** below — one real code fix, two
+> deferred-scope decisions, and a doc-count correction surfaced by the 2026-07-09 audit.
+> It is small and unblocks the next milestone cleanly. **The next real milestone is Phase 2**
+> (richer profile system on the P1-0 registry) — see the **Audit appendix** at the end of
+> this file for the live code-vs-roadmap status (formerly a standalone `GAP_AUDIT.md`, now
+> folded in here). The single authoritative narrative (pitch + live status + scope) lives
+> in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
 
 ---
 
@@ -252,6 +257,194 @@ profile's conventions. For the `example` profile that means:
 
 ---
 
+## Phase 1.5: Post-Phase-1 cleanup (2026-07-09 audit findings)
+
+> **Why this exists**: a requirements-vs-code audit on 2026-07-09 verified every load-bearing
+> Phase 1 claim against the source (all 10 endpoints live + wired, registry/storage/manifest
+> confirmed, atomic+sanitized export commit, `validateConfig()` fail-fast at boot, type mirror
+> + guard test intact, 224 tests green, both `tsc --noEmit` clean, extension builds). Phase 1 is
+> genuinely complete — **no product capability is missing.** This phase holds the four small
+> items the audit surfaced: one real code defect, two deferred-scope decisions to make, and a
+> doc/test-count correction. None touches shipped behavior; all are safe to do before Phase 2.
+> Pick any item, follow the "Done when" checklist, and you can start implementation without
+> re-deriving the context.
+
+### P1.5-1: Fix the leftover `antikythera` type cast in the export popup  *(code fix)*
+
+**What & why** — `ai-ui-editor/extension/popup/App.tsx:417` casts the export profile as
+`('antikythera' | 'generic')`:
+```ts
+projectProfile: activeProject()?.profileName as ('antikythera' | 'generic') | undefined,
+```
+The `example` profile was **renamed from `antikythera`** during the decouple work; every
+other type contract and comparison in the codebase uses `'example' | 'generic'`
+(`middleware/src/shared/types.ts`, `extension/shared/types.ts`, `App.tsx:389`).
+This `as`-cast escaped typecheck because `as` is unchecked, and it is the **only surviving
+`antikythera` reference in source** (verified by repo-wide grep). It is a direct violation of
+the project's #1 guardrail ("built-in profiles are examples, not antikythera" — see
+`PROJECT_BRIEF.md` §9/§10). It does not break runtime today (the real `profileName` value
+passes through), but it is a latent lie in the type contract and naming.
+
+**How to fix**
+- [x] Change the cast to use the declared union instead of a hardcoded literal pair. Prefer
+      importing the profile-name type (e.g. `ProjectProfileName` if exported from
+      `shared/types.ts`, which is `'example' | 'generic'`) and casting to that; or simply
+      `as 'example' | 'generic' | undefined`. Remove the `antikythera` literal entirely.
+      → Done 2026-07-09: `App.tsx:417` cast now `as ('example' | 'generic') | undefined`.
+- [x] Confirm `typesMirror.test.ts` still reflects `'example' | 'generic'` on both sides —
+      this change should *narrow* toward the mirror, not diverge from it.
+- [x] grep shield: after the fix, `grep -rniE "antikythera" ai-ui-editor/middleware/src ai-ui-editor/extension`
+      (with node_modules excluded) returns **zero hits in `.ts`/`.tsx`**.
+
+**Done when** — [x] App.tsx:417 no longer mentions `antikythera`; [x] `npm test` (ext + mw)
+still green (77 ext + 147 mw); [x] both `npx tsc --noEmit` clean + ext build clean; [x]
+repo-wide source grep for `antikythera` is empty. *(Optional guard test deferred — the grep
+is now trivially empty, so a dedicated `namingGuard.test.ts` is low-value until names can
+drift again; revisit if profiles multiply.)*
+
+---
+
+### P1.5-2: Decide the DevTools panel fate — wire it OR delete it  *(scope decision + code)*
+
+**What & why** — `ai-ui-editor/extension/devtools/` is a **full React panel that is built but
+disconnected.** `DevToolsPanel.tsx` registers a listener for `edit-applied` / `edit-undone`
+messages and persists an edit history to `localStorage`; it also sends `undo-specific`
+messages. **But nothing in the extension ever broadcasts `edit-applied`/`edit-undone`** (repo-wide
+grep finds those strings *only* in the panel's own listener), and none of `edit-applied`/
+`edit-undone`/`undo-specific` appear in the `ExtensionMessage` type union
+(`extension/shared/types.ts`). So the panel can never receive history — it is a UI with no
+data source. The docs correctly mark this "deferred" (see Audit appendix "P1-7 follow-ups
+explicitly deferred"). Carrying ~150 lines of dead, unmaintained code into Phase 2 is itself
+a drift risk. **Pick one — do not leave it undecided.**
+
+**Option A — Wire it (recommended; the UI investment is already paid)** ✅ done 2026-07-09
+- [x] Add `'edit-applied'` and `'edit-undone'` to the `ExtensionMessage` type union in both
+      `extension/shared/types.ts` and `middleware/src/shared/types.ts` (type-mirror
+      convention — added to **both** in the same change; `typesMirror.test.ts` pins
+      lockstep; also documented with `+ P1.5-2` guards). (`undo-specific` was added too.)
+- [x] (Deviation from the literal "broadcast from `background.ts`" above — logged) The
+      apply/undo logic lives in the **popup** (`App.tsx` `handleApply`/`handleUndo`), and
+      `background.ts`'s `send-to-server` is a generic `{endpoint, body}` relay with no
+      notion of apply-vs-undo. The popup is the actor that knows which `EditOption.id` was
+      applied and whether `/api/files/write`/`/api/git/undo` succeeded, so the broadcast is
+      emitted from the popup on success (using the same `chrome.runtime.sendMessage` channel
+      the background uses — the devtools-panel listener receives it identically regardless of
+      emitting context). Stable per-edit `id` = `EditOption.id` (set by the AI response).
+      New `extension/shared/editHistoryBroadcast.ts` holds the pure `editAppliedPayload` /
+      `editUndonePayload` helpers (mirrors `applyDiff`/`resolveApplyBase` testability pattern).
+- [x] `undo-specific` (panel → background) is handled: `background.ts` `case 'undo-specific'`
+      POSTs `/api/git/undo` and broadcasts `edit-undone` echoing the panel's `entryId`.
+      Per the note, this is **"undo last" semantics initially** (`/api/git/undo` only undoes
+      the most recent commit; per-edit undo is not yet supported). The panel's `undo-specific`
+      send is no longer a dangling message.
+- [x] Test: `extension/__tests__/panelHistory.test.ts` (6 asserts) pins the
+      `editAppliedPayload` / `editUndonePayload` payload contract (stable id, the fields the
+      panel reads, exact `type` strings) + a `chrome.runtime.sendMessage` spy asserting the
+      emitted payload is forwarded verbatim. Extension tests: 77 → **83** (docSync count-guard
+      bumped to `LIVE_EXT=83 / LIVE_GRAND=231` in the same change).
+
+**Option B — Delete it (acceptable if Phase 2 won't use a history panel soon)** — *not chosen*
+- [ ] (Not done — Option A chosen instead.) Remove `ai-ui-editor/extension/devtools/` entirely.
+
+**Done when** — [x] a single option chosen and complete; [x] no `edit-applied`/`edit-undone`/
+`undo-specific` strings remain in source except where actually wired+typed (verified: panel
+listener + popup/background emitters + the union); [x] `npm test` green (148 mw + 83 ext =
+231); [x] `manifest.json` + extension build clean (devtools entries unchanged — panel is now
+a live, wired UI).
+
+---
+
+### P1.5-3: Add an end-to-end test harness  *(product enhancement; unblocks safe Phase 2)*
+
+**What & why** — Phase 1's unit/integration coverage is strong (148+83 tests) but the
+**riskiest cross-boundary chain has no end-to-end test**: popup → registry → content-script →
+middleware → on-disk git project. The audit explicitly flagged this as the one remaining test
+gap (Audit appendix "P1-8 testing stretch goals": E2E is the only ⏸️ item). Phase 2 adds *more*
+cross-boundary behavior (ProfileManager reading the registry, per-profile output paths), so a
+working E2E harness now de-risks every later task.
+
+**How to build** (suggested shape — adapt to the existing Vitest setup)
+- [ ] Add an E2E project type/test dir, e.g. `ai-ui-editor/e2e/`. Use a **temp git project on
+      disk** (create in `os.tmpdir()` via a setup script: `git init`, a `package.json` marker
+      so `/api/files/probe-root` accepts it, and a profile-appropriate `ideas.md`).
+- [ ] Spin the real middleware via a Vitest `globalSetup` (`npm run dev` equivalent, or
+      `server.ts`'s exported `start()` on an ephemeral port) so tests hit the live HTTP routes
+      — not `app.inject`. Use `fetch` against `localhost:<port>/api/...`.
+- [ ] The browser side: either (a) a real Chrome via puppeteer/playwright loading the built
+      extension from `extension/dist`, or (b) a lighter "transport E2E" that replays the
+      exact `chrome.runtime.sendMessage` payloads the popup sends. Prefer (a) for true E2E;
+      use (b) only if a headed browser isn't feasible in CI.
+- [ ] **The one canonical test**: register the temp project path → simulate right-click export
+      → POST `/api/files/append-ideas` with a spec → assert the `ideas.md` line
+      (`- [ID-001] {title} | Priority: {Priority}`) *and* `requirements/ID-001/spec.md` exist
+      on disk, and that the resulting git commit is undoable via `/api/git/undo` (files vanish
+      after undo). Assert ID increments on a second run.
+- [ ] Gate path-safety in E2E too: a `projectRoot` containing `..` or a non-absolute URL is
+      rejected (mirrors `registryPlumbing.test.ts` but through the real server).
+
+**Done when** — [ ] one green E2E test exercises register→export→verify-on-disk→undo;
+[ ] E2E runs against the real middleware (not just `inject`); [ ] `npm test` from `middleware`
+optionally includes the e2e suite (or a separate `npm run test:e2e`); [ ] the test cleans up
+its temp git project in teardown.
+
+---
+
+### P1.5-4: Correct the stale test counts in the docs  *(doc update; unblocks the guard)*
+
+**What & why** — the 2026-07-09 audit ran the suites and found the docs advertise a stale
+number, **and the doc's own table doesn't foot internally**:
+- `TODO.md:471,499` say **221 tests** (`144 middleware + 77 extension`). Actual run:
+  **147 middleware + 77 extension = 224**.
+- `TODO.md:490,509` say `docSync.test.ts` has **16** assertions. Actual: **18**.
+- `TODO.md:492` labels the middleware column total **144**, but the rows above it sum to
+  **145** (an arithmetic slip independent of the count change).
+
+`PROJECT_BRIEF.md` §7 repeats the stale "221 tests (144 middleware + 77 extension)" too. The
+`docSync.test.ts` guard does **not** assert these numbers — which is *why* 221→224 drifted
+unnoticed — so after fixing the prose, pin the count so a future test-add re-breaks the guard
+and forces the doc to follow.
+
+**How to fix** — ✅ done 2026-07-09 (note: adding the guard assertion itself bumped the
+live totals +1, so the corrected targets are **148 / 225 / 19**, not the original 147/224/18).
+- [x] `TODO.md` Appendix A test table: set `docSync.test.ts` → **19**; set **Middleware
+      Total → 148**; set **Grand Total → 225**. Recounted every row; arithmetic now foots
+      (rows sum to 148).
+- [x] `TODO.md` prose + grand-total cell + audit-history callout: bumped to **148 / 225**;
+      added a dated `2026-07-09 (P1.5 audit + cleanup)` audit-history entry (the old "16
+      assertions / unchanged at 221" line is kept as historical record of the consolidation
+      pass).
+- [x] `PROJECT_BRIEF.md` §7 status paragraph + §12 "in one breath": changed to
+      "225 tests (148 middleware + 77 extension)".
+- [x] **Added the count pin to `middleware/__tests__/docSync.test.ts`** as
+      `P1.5-4: TODO.md + PROJECT_BRIEF.md state the current live test totals (count pin)`.
+      It snapshots `LIVE_MW=148 / LIVE_EXT=77 / LIVE_GRAND=225 / LIVE_DOCSYNC=19` and greps
+      the docs for those numbers + the table total cell + the docSync row. **Verified by
+      negative control**: temporarily drifting `225→226` in PROJECT_BRIEF.md made the test
+      fail (1 failed | 18 passed); after restore, 19 pass. A future test-add without bumping
+      the LIVE_* constants + the doc will now fail the guard — exactly the intent.
+
+**Done when** — [x] TODO.md + PROJECT_BRIEF.md state **225 / 148 / 19** and the table
+arithmetic foots (rows sum to 148); [x] `npm test` green (148 mw + 77 ext = 225) *including*
+the new count-pinning assertion in `docSync.test.ts` (now 19 tests); [x] a deliberate
+doc drift now *fails* the guard (verified by negative control).
+
+---
+
+### Phase 1.5 — ordering & exit
+
+Suggested order: **P1.5-1** (one-line fix, removes a guardrail violation) → **P1.5-4** (doc +
+guard, so future drift is auto-caught) → **P1.5-2** (scope decision — wire or delete) →
+**P1.5-3** (E2E harness, larger, but de-risks everything after). All four are independent
+enough to do in any order; the only soft dependency is that P1.5-3's E2E test will
+*naturally* re-verify the P1.5-1 fix and exercise the P1.5-2 decision, so doing it last lets
+it double as regression cover for the others.
+
+**Phase 1.5 is done when** its checklist is empty *and* `npm test` / both `tsc --noEmit` /
+extension `npm run build` are green *and* the docSync guard (with the new count pin) passes.
+Then start Phase 2.
+
+---
+
 ## Phase 2: Project Profiles + Multi-Project Support
 
 (**Reframed** under the new model: Phase 2 matures the registry from Phase 1's
@@ -451,9 +644,11 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 
 #### P1-7 follow-ups explicitly deferred (non-blocking)
 
-- **DevTools panel wiring** — `extension/devtools/` has a full React panel that listens for
-  `edit-applied` / `edit-undone` messages, but the popup doesn't broadcast them. *Deferred —
-  consider wiring in Phase 2.*
+- **DevTools panel wiring** ✅ done (P1.5-2, 2026-07-09) — `extension/devtools/`'s React panel
+  now receives a live edge: the popup broadcasts `edit-applied`/`edit-undone` on apply/undo
+  success; `background.ts` handles the panel's `undo-specific` → `/api/git/undo`. Three message
+  types added to the mirror union; `panelHistory.test.ts` (6) pins the contract. (The "undo
+  last" caveat applies — per-edit undo is still future work.)
 - **Export-mode streaming** — Edit mode streams via `/api/ai/edit/stream`; Export yields a
   single spec, so streaming adds little value. *Deferred, not pursued.*
 
@@ -466,12 +661,14 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 | Integration tests for the project registry (P1-0) | ✅ `probeRoot.test.ts` (13) + `registryPlumbing.test.ts` (9) + ext `projectRegistry.test.ts` (30). |
 | E2E: register project → right-click → export → verify `ideas.md` line + `requirements/ID/spec.md` created | ⏸️ **Not done.** No E2E harness exists; would require a running browser + a temp git project. Deferred until an E2E layer is added. |
 
-### Test results (re-verified 2026-07-05)
+### Test results (re-verified 2026-07-09)
 
-> All green. **144 middleware + 77 extension = 221 tests passing.** Both packages
+> All green. **148 middleware + 83 extension = 231 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
-> file list; its count is included in the middleware total.)
+> file list; its count — now pinned by the P1.5-4 count-guard assertion — is included in the
+> middleware total. These totals are pinned by `docSync.test.ts`'s count-guard assertion —
+> change the count, change the doc in the same commit.)
 
 | Project | File | Tests | Status |
 |---------|------|-------|--------|
@@ -487,16 +684,17 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 | Middleware | `registryPlumbing.test.ts` *(P1-0)* | 9 | ✅ |
 | Middleware | `ResponseParser.test.ts` | 21 | ✅ |
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
-| Middleware | `docSync.test.ts` *(doc-consistency guard, re-pointed at consolidated set)* | 16 | ✅ |
+| Middleware | `docSync.test.ts` *(doc-consistency guard, re-pointed at consolidated set; +count pin P1.5-4)* | 19 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **144** | ✅ |
+| **Middleware Total** | | **148** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.requirements.test.ts` | 17 | ✅ |
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
-| **Extension Total** | | **77** | ✅ |
-| **Grand Total** | | **221** | ✅ |
+| Extension | `panelHistory.test.ts` *(P1.5-2)* | 6 | ✅ |
+| **Extension Total** | | **83** | ✅ |
+| **Grand Total** | | **231** | ✅ |
 
 ### How this audit changed
 
@@ -508,6 +706,24 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
   this `TODO.md` appendix set; renamed `VISION_REQUIREMENTS.md` → `VISION.md`; rewrote the
   `docSync.test.ts` assertions to pin the consolidated set (16 assertions). Test count
   unchanged at 221. Next milestone: Phase 2 + deferred enhancements.
+- **2026-07-09 (P1.5 audit + cleanup):** requirements-vs-code audit re-verified Phase 1
+  complete against the source (all 10 endpoints, registry, atomic export, `validateConfig`,
+  type mirror). Test totals had grown since the consolidation but the docs still said "221"
+  (the table rows summed to 145 while the cell said 144) — corrected prose + table to the
+  live **148 middleware + 77 extension = 225**, and added a `docSync.test.ts` count-guard
+  assertion (docSync 16 → 19) so a future test-add without a doc bump now auto-breaks the
+  guard. Also fixed one real code defect: the `antikythera` cast at `App.tsx:417`. See the
+  **Phase 1.5** section above.
+- **2026-07-09 (P1.5-2 panel wiring):** chose **Option A** — wired the disconnected DevTools
+  history panel rather than deleting it. Added `'edit-applied'`/`'edit-undone'`/`'undo-specific'`
+  to the `ExtensionMessage` union in both mirrors; the popup broadcasts `edit-applied`/`edit-undone`
+  on apply/undo success via new pure helpers in `extension/shared/editHistoryBroadcast.ts`;
+  `background.ts` handles the panel's `undo-specific` → `/api/git/undo` ("undo last" semantics
+  for now — per-edit undo is future work). New `panelHistory.test.ts` pins the payload contract
+  (+6 → extension 77 → **83**, grand 225 → **231**; `docSync` count-guard bumped to match).
+  Fixed a latent bug as a side effect: the popup's `server-response` handler previously
+  mis-routed the `/api/files/write` response (it now intercepts it cleanly). Still open:
+  **P1.5-3** (E2E harness). See the **Phase 1.5** section above.
 
 ---
 

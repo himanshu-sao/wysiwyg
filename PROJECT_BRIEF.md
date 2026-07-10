@@ -173,9 +173,10 @@ The details that make this not-toy:
 
 ## 7. Current code-vs-roadmap status
 
-**Phase 1 (Requirements Bridge) is feature-complete and test-pinned** — **221 tests
-passing** (144 middleware + 77 extension), both packages `tsc --noEmit` clean, the
-extension builds. **There are 0 open code blockers.**
+**Phase 1 (Requirements Bridge) is feature-complete and test-pinned** — **231 tests
+passing** (148 middleware + 83 extension; counts corrected 2026-07-09 from a stale "221"
+and pinned by a `docSync.test.ts` count-guard assertion), both packages `tsc --noEmit`
+clean, the extension builds. **There are 0 open code blockers.**
 
 The follow-up fixes that prior audits flagged as drift/minor are all resolved with guard
 tests, and a doc-consistency guard (`docSync.test.ts`) pins the consolidated doc set so
@@ -275,7 +276,7 @@ with two outputs — apply a diff now (Edit) or write a structured spec into you
 backlog for later (Export) — generalized across any project you register by disk path.
 MVP shipped, post-MVP hardening (P1–P10) shipped, Requirements Bridge Phase 1 shipped
 end-to-end (foundation P1-1…P1-5 + the Project Registry P1-0 `e9d2b91` + the File Export
-P1-6 `acb45ab`), test-pinned at 221 tests. **Phase 1 is feature-complete.** The next
+P1-6 `acb45ab`), test-pinned at 231 tests. **Phase 1 is feature-complete.** The next
 milestone is **Phase 2** — a richer profile system on top of the P1-0 registry (see `TODO.md`).
 Everything beyond that is deliberately deferred.
 

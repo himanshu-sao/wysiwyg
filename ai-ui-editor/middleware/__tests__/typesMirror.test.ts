@@ -143,6 +143,14 @@ describe('shared/types.ts type-mirror lockstep (P1-0/P1-6 GAP_AUDIT follow-up)',
     expect(mw).toContain('send-to-server');
     expect(mw).toContain('mode-changed');
 
+    // P1.5-2: the DevTools history panel's message types were wired in this
+    // pass (documented both here and in the comment block above the union).
+    // Documenting their presence mirrors the registry-* checklist above — if
+    // any is dropped from the union, this surfaces it.
+    expect(mw).toContain('edit-applied');
+    expect(mw).toContain('edit-undone');
+    expect(mw).toContain('undo-specific');
+
     // Stale types from the old middleware enum (must NOT be present — they'd
     // imply the dead 5-type union was re-added):
     expect(mw).not.toContain("'element-selected'");
