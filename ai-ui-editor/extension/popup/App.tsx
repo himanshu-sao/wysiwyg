@@ -836,17 +836,23 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* A6: Reserve a stable loading region so the panel doesn't shift as
+          streaming starts. The outer block keeps a min-height for its whole
+          lifetime (no pop-in/out of the spinner), and the <pre> is always
+          mounted with a fixed min-height so the first token doesn't cause a
+          height jump — it just fills an already-reserved box. */}
       {loading && (
-        <div className="p-4">
+        <div className="p-4 min-h-[7rem]">
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
             <span className="ml-2 text-sm">{progress || 'Generating...'}</span>
           </div>
-          {tokenBuffer && (
-            <pre className="mt-2 max-h-40 overflow-auto text-[10px] leading-tight text-gray-500 bg-gray-50 rounded p-2 whitespace-pre-wrap break-all">
-              {tokenBuffer}
-            </pre>
-          )}
+          <pre
+            aria-hidden={tokenBuffer ? undefined : true}
+            className="mt-2 min-h-[4rem] max-h-40 overflow-auto text-[10px] leading-tight bg-gray-50 rounded p-2 whitespace-pre-wrap break-all"
+          >
+            {tokenBuffer || <span className="text-gray-400">streaming…</span>}
+          </pre>
         </div>
       )}
 

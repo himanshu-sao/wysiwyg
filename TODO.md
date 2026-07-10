@@ -388,7 +388,7 @@ Findings below are anchored to the skill's named rules; severities are the skill
       3–5s) and keep `error` for failures. Skill: §8 `success-feedback`,
       `toast-dismiss`, `toast-accessibility`; `ux` "Submit Feedback" / "Error
       Feedback" (High).
-- [ ] **A6 — Reserve a stable loading region (no layout jump).** When `loading`
+- [x] **A6 — Reserve a stable loading region (no layout jump).** When `loading`
       flips, a spinner block renders in/instead of content and the token-stream
       `<pre>` pops in/out → CLS. Give the loading area a `min-height`/skeleton so
       the panel doesn't shift as streaming starts. Skill: §3 `content-jumping`,
