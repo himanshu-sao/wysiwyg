@@ -3,8 +3,41 @@ import { EditRequest, EditOption, ExtensionMode, ProjectRegistryState, Registere
 import { applyDiff } from '../shared/diff';
 import { resolveApplyBase } from '../shared/apply';
 import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
+import Modal from './components/Modal';
 
 const MIDDLEWARE_HTTP_URL = 'http://localhost:3000';
+
+// A3: Inline SVG icons replacing emoji structural headers. Feather/Lucide MIT-licensed
+// paths simplified to ~120 bytes each.
+const Icons = {
+  filePen: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="inline-block align-[-2px]">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+      <path d="M14 2v6h6"/>
+      <path d="M12 18v-5"/>
+      <path d="M9 15h6"/>
+    </svg>
+  ),
+  checkCircle: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="inline-block align-[-2px]">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+  ),
+  triangleAlert: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="inline-block align-[-2px]">
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>
+      <line x1="12" y1="9" x2="12" y2="13"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  ),
+};
 
 const App: React.FC = () => {
   const [elementContext, setElementContext] = useState<EditRequest | null>(null);
@@ -51,6 +84,25 @@ const App: React.FC = () => {
 
   // Pending write waiting on a validation result before being committed.
   const pendingWriteRef = useRef<{ file: string; content: string; commitMessage: string } | null>(null);
+
+  // A2: Modal state replacing window.confirm(). The modal is rendered as an inline
+  // overlay at the bottom of the popup; showModal() stores the continuation action
+  // so the confirm button picks it up (no ref stashing of payloads needed — the
+  // payloads are already in the closures).
+  const [modal, setModal] = useState<{
+    visible: boolean;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  function showModal(message: string, confirmLabel: string, onConfirm: () => void) {
+    setModal({ visible: true, message, confirmLabel, onConfirm });
+  }
+
+  function closeModal() {
+    setModal(null);
+  }
 
   // P1-0: Project Registry state. The active project's on-disk `path` becomes
   // `projectRoot` for every outbound request (replacing window.location.origin).
@@ -419,38 +471,46 @@ const App: React.FC = () => {
   }
 
   async function handleApply(option: EditOption) {
-    if (!confirm(`Apply this change: ${option.description}?`)) return;
+    // A2: Show confirmation modal instead of window.confirm(). The continuation
+    // (resolve base → apply diff → validate → set pending write) is captured in
+    // the onConfirm closure.
+    showModal(
+      `Apply this change: ${option.description}?`,
+      'Apply',
+      () => {
+        closeModal();
+        // P7 / P3: resolve the diff base once, in one place, via the shared helper
+        // (mirrors the applyDiff extraction — keep apply-flow policy testable).
+        // Precedence: manual pick > resolved source > context.sourceCode. If none
+        // yields a non-empty base, refuse to write a half-applied diff.
+        const { file, baseSource, needsManualPick } = resolveApplyBase({
+          pickedFile,
+          pickedFileContent,
+          resolvedFilePath: resolvedFilePath ?? undefined,
+          resolvedSourceCode: resolvedSourceCode ?? undefined,
+          contextSourceCode: elementContext?.context.sourceCode,
+          optionFile: option.file,
+        });
+        const content = applyDiff(baseSource, option.diff);
 
-    // P7 / P3: resolve the diff base once, in one place, via the shared helper
-    // (mirrors the applyDiff extraction — keep apply-flow policy testable).
-    // Precedence: manual pick > resolved source > context.sourceCode. If none
-    // yields a non-empty base, refuse to write a half-applied diff.
-    const { file, baseSource, needsManualPick } = resolveApplyBase({
-      pickedFile,
-      pickedFileContent,
-      resolvedFilePath: resolvedFilePath ?? undefined,
-      resolvedSourceCode: resolvedSourceCode ?? undefined,
-      contextSourceCode: elementContext?.context.sourceCode,
-      optionFile: option.file,
-    });
-    const content = applyDiff(baseSource, option.diff);
+        if (needsManualPick) {
+          setError('No source content to apply the diff against. Pick a file manually below.');
+          return;
+        }
 
-    if (needsManualPick) {
-      setError('No source content to apply the diff against. Pick a file manually below.');
-      return;
-    }
+        // Validate before write (MVP-13/17). If validation fails, surface errors
+        // and refuse to write. The popup *also* receives server-error via the
+        // background relay; this is a synchronous gate before we even send /write.
+        chrome.runtime.sendMessage(
+          {
+            type: 'send-to-server',
+            data: { endpoint: '/api/files/validate', body: { file, content, projectRoot: effectiveProjectRoot() } },
+          }
+        );
 
-    // Validate before write (MVP-13/17). If validation fails, surface errors
-    // and refuse to write. The popup *also* receives server-error via the
-    // background relay; this is a synchronous gate before we even send /write.
-    chrome.runtime.sendMessage(
-      {
-        type: 'send-to-server',
-        data: { endpoint: '/api/files/validate', body: { file, content, projectRoot: effectiveProjectRoot() } },
+        pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
       }
     );
-
-    pendingWriteRef.current = { file, content, commitMessage: `AI: ${instruction}` };
   }
 
   // P1-5/P1-6: Export the edited spec to the active project's backlog via
@@ -458,49 +518,58 @@ const App: React.FC = () => {
   // On success the endpoint returns the generated ID + specPath for confirmation.
   async function handleExport() {
     const projectName = activeProject()?.displayName || 'this project';
-    const intakeLabel = activeProject()?.profileName === 'example'
+    const exportIntakeLabel = activeProject()?.profileName === 'example'
       ? '.wysiwyg/ideas.md'
       : 'ideas.md';
-    if (!confirm(`Export this specification (${exportPriority} priority) to ${projectName}'s ${intakeLabel}?`)) return;
 
-    const root = effectiveProjectRoot();
-    if (!root || root.startsWith('http')) {
-      setError('No registered project path — register a project first (Project dropdown above).');
-      return;
-    }
+    // A2: Show confirmation modal instead of window.confirm(). The continuation
+    // (validate root → set loading → send) is captured in the onConfirm closure.
+    showModal(
+      `Export this specification (${exportPriority} priority) to ${projectName}'s ${exportIntakeLabel}?`,
+      'Export',
+      () => {
+        closeModal();
 
-    setLoading(true);
-    setError('');
+        const root = effectiveProjectRoot();
+        if (!root || root.startsWith('http')) {
+          setError('No registered project path — register a project first (Project dropdown above).');
+          return;
+        }
 
-    chrome.runtime.sendMessage({
-      type: 'send-to-server',
-      data: {
-        endpoint: '/api/files/append-ideas',
-        body: {
-          spec: specEditable,
-          title: exportTitle.trim() || undefined,
-          priority: exportPriority,
-          architectureHints,
-          testScenarios,
-          edgeCases,
-          element: elementContext?.element,
-          instruction,
-          projectRoot: root,
-          // P2-3: send the resolved profile name (from the dropdown) + the
-          // active registered project so ProfileManager can layer rootPath and
-          // pick the right template. The old 'antikythera' hardcoded cast is gone.
-          projectProfile: resolvedProfile(),
-          registeredProject: activeProject()
-            ? { path: activeProject()!.path, profileName: activeProject()!.profileName }
-            : undefined,
-        },
-      },
-    });
+        setLoading(true);
+        setError('');
 
-    // P1-6: handle the server response (the background relay sends back
-    // server-response or server-error). The loading spinner will show until the
-    // response arrives; on success we'll show the generated ID.
-    // We don't immediately clear loading here — the response handler will.
+        chrome.runtime.sendMessage({
+          type: 'send-to-server',
+          data: {
+            endpoint: '/api/files/append-ideas',
+            body: {
+              spec: specEditable,
+              title: exportTitle.trim() || undefined,
+              priority: exportPriority,
+              architectureHints,
+              testScenarios,
+              edgeCases,
+              element: elementContext?.element,
+              instruction,
+              projectRoot: root,
+              // P2-3: send the resolved profile name (from the dropdown) + the
+              // active registered project so ProfileManager can layer rootPath and
+              // pick the right template. The old 'antikythera' hardcoded cast is gone.
+              projectProfile: resolvedProfile(),
+              registeredProject: activeProject()
+                ? { path: activeProject()!.path, profileName: activeProject()!.profileName }
+                : undefined,
+            },
+          },
+        });
+
+        // P1-6: handle the server response (the background relay sends back
+        // server-response or server-error). The loading spinner will show until the
+        // response arrives; on success we'll show the generated ID.
+        // We don't immediately clear loading here — the response handler will.
+      }
+    );
   }
 
   // P7 / MVP-18: user manually picks a source file when sourcemap resolution
@@ -603,7 +672,7 @@ const App: React.FC = () => {
         <label className="text-xs text-gray-600 ml-auto flex items-center gap-1">
           Profile
           <select
-            className="border rounded px-1 py-0.5 text-xs"
+            className="border rounded px-1 py-0.5 text-xs focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
             value={resolvedProfile()}
             onChange={(e) => {
               const v = e.target.value;
@@ -637,7 +706,7 @@ const App: React.FC = () => {
               <label className="block text-gray-600">
                 Active project for this tab
                 <select
-                  className="ml-2 border rounded px-1 py-0.5"
+                  className="ml-2 border rounded px-1 py-0.5 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
                   value={activeProj?.id ?? ''}
                   onChange={(e) => handleSelectProject(e.target.value)}
                 >
@@ -652,7 +721,7 @@ const App: React.FC = () => {
               <label className="block text-gray-600">
                 Global override
                 <select
-                  className="ml-2 border rounded px-1 py-0.5"
+                  className="ml-2 border rounded px-1 py-0.5 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
                   value={registryState.globalActiveId ?? ''}
                   onChange={(e) => handleSetOverride(e.target.value)}
                 >
@@ -682,7 +751,7 @@ const App: React.FC = () => {
             />
             <button
               type="submit"
-              className="bg-gray-700 text-white px-2 py-1 rounded text-xs"
+              className="bg-gray-700 text-white px-2 py-1 rounded text-xs cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
             >
               Add
             </button>
@@ -709,7 +778,7 @@ const App: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-2 rounded font-medium disabled:bg-gray-400 ${
+          className={`w-full py-2 rounded font-medium cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-400 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none ${
             isExportMode
               ? 'bg-purple-600 text-white hover:bg-purple-700'
               : 'bg-indigo-600 text-white hover:bg-indigo-700'
@@ -720,7 +789,7 @@ const App: React.FC = () => {
       </form>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 whitespace-pre-wrap">
+        <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 whitespace-pre-wrap">
           {error}
         </div>
       )}
@@ -752,7 +821,7 @@ const App: React.FC = () => {
             <button
               type="submit"
               disabled={pickingFile}
-              className="bg-amber-600 text-white px-2 py-1 rounded text-xs"
+              className="bg-amber-600 text-white px-2 py-1 rounded text-xs cursor-pointer disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
             >
               {pickingFile ? 'Reading...' : 'Use'}
             </button>
@@ -786,7 +855,7 @@ const App: React.FC = () => {
                 )}
                 <button
                   onClick={() => handleApply(option)}
-                  className="mt-2 bg-green-600 text-white px-4 py-1 rounded text-sm"
+                  className="mt-2 bg-green-600 text-white px-4 py-1 rounded text-sm cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
                 >
                   Apply
                 </button>
@@ -817,7 +886,7 @@ const App: React.FC = () => {
               <select
                 value={exportPriority}
                 onChange={(e) => setExportPriority(e.target.value as 'High' | 'Medium' | 'Low')}
-                className="ml-2 p-1 border rounded text-xs mt-1"
+                className="ml-2 p-1 border rounded text-xs mt-1 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
               >
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
@@ -843,11 +912,11 @@ const App: React.FC = () => {
           {architectureHints.length > 0 && (
             <div className="border rounded p-3 bg-blue-50">
               <h3 className="text-xs font-semibold text-blue-800 mb-2">
-                📁 Files to Modify
+                {Icons.filePen} Files to Modify
               </h3>
               <ul className="text-xs text-blue-700 space-y-1">
-                {architectureHints.map((hint, i) => (
-                  <li key={i} className="font-mono">{hint}</li>
+                {architectureHints.map((hint) => (
+                  <li key={hint} className="font-mono">{hint}</li>
                 ))}
               </ul>
             </div>
@@ -857,11 +926,11 @@ const App: React.FC = () => {
           {testScenarios.length > 0 && (
             <div className="border rounded p-3 bg-green-50">
               <h3 className="text-xs font-semibold text-green-800 mb-2">
-                ✅ Test Scenarios
+                {Icons.checkCircle} Test Scenarios
               </h3>
               <ul className="text-xs text-green-700 space-y-1">
-                {testScenarios.map((scenario, i) => (
-                  <li key={i}>• {scenario}</li>
+                {testScenarios.map((scenario) => (
+                  <li key={scenario}>• {scenario}</li>
                 ))}
               </ul>
             </div>
@@ -871,11 +940,11 @@ const App: React.FC = () => {
           {edgeCases.length > 0 && (
             <div className="border rounded p-3 bg-amber-50">
               <h3 className="text-xs font-semibold text-amber-800 mb-2">
-                ⚠️ Edge Cases
+                {Icons.triangleAlert} Edge Cases
               </h3>
               <ul className="text-xs text-amber-700 space-y-1">
-                {edgeCases.map((edgeCase, i) => (
-                  <li key={i}>• {edgeCase}</li>
+                {edgeCases.map((edgeCase) => (
+                  <li key={edgeCase}>• {edgeCase}</li>
                 ))}
               </ul>
             </div>
@@ -885,7 +954,7 @@ const App: React.FC = () => {
           <button
             onClick={handleExport}
             disabled={loading}
-            className="w-full bg-purple-600 text-white py-2 rounded font-medium hover:bg-purple-700 disabled:bg-gray-400"
+            className="w-full bg-purple-600 text-white py-2 rounded font-medium cursor-pointer disabled:cursor-not-allowed hover:bg-purple-700 disabled:bg-gray-400 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
           >
             {loading ? 'Exporting...' : `Export to ${intakeLabel}`}
           </button>
@@ -895,11 +964,23 @@ const App: React.FC = () => {
       <div className="mt-4 pt-4 border-t">
         <button
           onClick={handleUndo}
-          className="text-sm text-red-600 hover:text-red-800"
+          className="text-sm text-red-600 hover:text-red-800 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
         >
           Undo Last Change
         </button>
       </div>
+
+      {/* A2: Confirmation modal overlay. Replaces window.confirm() with a styled,
+          focus-trapped, Esc-cancellable inline dialog. Rendered at top level so
+          it overlays the entire popup viewport. */}
+      {modal && (
+        <Modal
+          message={modal.message}
+          confirmLabel={modal.confirmLabel}
+          onConfirm={modal.onConfirm}
+          onCancel={closeModal}
+        />
+      )}
     </div>
   );
 };

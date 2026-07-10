@@ -340,6 +340,91 @@ not only provider-side config.)
 
 ---
 
+## Phase 2.5: Extension UI/UX Polish (audit-driven)
+
+**Added**: 2026-07-10, from a `ui-ux-pro-max` skill review of the popup
+(`extension/popup/App.tsx` — React + Tailwind, Chrome extension). The skill is
+app-platform-oriented, so only its stack-agnostic Quick Reference checklist
+(§1–§8: accessibility, interaction, forms, feedback, layout, typography/consistency)
+applies; the RN-specific touch-gesture/safe-area rules were skipped for this web popup.
+Findings below are anchored to the skill's named rules; severities are the skill's.
+
+> Not blocking Phase 3. Discrete, no cross-task deps; pick any subset. Files: the
+> whole pass is in `App.tsx` (+ one small CSS token pass in `popup/styles.css`).
+> Extension tests today: `popup.profileSelection` (19), `popup.requirements` (17),
+> `apply` (10), `diff` (7), `projectRegistry` (30), `sanitize` (13) — keep green.
+
+### 🔴 Critical
+
+- [ ] **A1 — Announce errors to assistive tech.** The error banner (`App.tsx`:-22ish,
+      the `<div className="… text-red-700 whitespace-pre-wrap">`) is visual-only.
+      Add `role="alert"` (or `aria-live="polite"`). Skill: Quick Reference §1
+      `aria-live-errors`; `ux` domain "Error Messages must be announced" (High).
+- [ ] **A2 — Replace native `confirm()` with an in-app modal.** `handleApply`
+      (`confirm("Apply this change…")`) and `handleExport`
+      (`confirm("Export this specification…")`) both use the browser dialog.
+      Build a styled, Esc-to-cancel, focus-trapped confirmation modal in the popup
+      consistent with the rest of the UI. Skill: §1 `escape-routes`, §8
+      `confirmation-dialogs`, Common Rules "Modal/Sheet".
+- [ ] **A3 — Drop emoji structural icons; use inline SVG.** `📁 Files to Modify`,
+      `✅ Test Scenarios`, `⚠️ Edge Cases` (the three spec-section header emojis)
+      don't theme, render inconsistently, and can't be controlled by tokens.
+      Replace with Lucide (`file-pen` / `circle-check` / `triangle-alert`) plus
+      `aria-hidden`, or remove. Skill: §4 `no-emoji-icons`; Common Rules
+      "No Emoji as Structural Icons".
+
+### 🟡 High
+
+- [ ] **A4 — Visible labels, not placeholder-only.** The instruction `<textarea>`,
+      the "Add project" path `<input>`, the manual-pick `<input>`, and the export
+      `<input>` title rely on `placeholder`. Wrap each in a `<label>` with visible
+      text (the `Title`/`Priority` fields already do — match them; for the textarea
+      an `sr-only` label works). Skill: §8 `input-labels`; `ux` "Form Labels"
+      (High).
+- [ ] **A5 — Separate the success channel from `error`.** Today `error` carries
+      *both* failures (`App.tsx:131 setError("Export conflict…")`) and successes
+      (`:131 setError("Exported as ${id}…")`), so a successful export renders in a
+      red banner. Add a `success`/`toast` state (green, aria-live, auto-dismiss
+      3–5s) and keep `error` for failures. Skill: §8 `success-feedback`,
+      `toast-dismiss`, `toast-accessibility`; `ux` "Submit Feedback" / "Error
+      Feedback" (High).
+- [ ] **A6 — Reserve a stable loading region (no layout jump).** When `loading`
+      flips, a spinner block renders in/instead of content and the token-stream
+      `<pre>` pops in/out → CLS. Give the loading area a `min-height`/skeleton so
+      the panel doesn't shift as streaming starts. Skill: §3 `content-jumping`,
+      §7 `loading-states`.
+
+### 🟢 Medium / polish
+
+- [ ] **A7 — Promote Project to the header row (next to Profile), or add a
+      disclosure affordance.** After P2-3, Profile is a header first-class
+      control but the Project registry (which sets the write root) is still buried
+      in `<details>` with no chevron or `aria-expanded`. Skill: §9
+      `destructive-nav-separation` is N/A, but the consistency/`nav-hierarchy`
+      argument applies. (Lower priority: this is partly a product call.)
+- [ ] **A8 — Stable list keys (not array index).** `key={i}` on the
+      architecture-hints / test-scenarios / edge-cases lists. Use the item text
+      or a generated id. Skill: `react` stack "Use stable IDs as keys; Don't:
+      array index as key for dynamic lists".
+- [ ] **A9 — Rethink the destructive-action confirm weighting.** Apply and Export
+      both `confirm()`, but `Undo Last Change` (reverts a git commit) is one unguarded
+      click. Either confirm undo, or keep it clickable but show a brief
+      "Undid: …" success feedback and make it visually subordinate. Skill: §8
+      `confirmation-dialogs`, `destructive-emphasis`; §9 `destructive-nav-separation`.
+- [ ] **A10 — `cursor-pointer` + visible focus-visible rings on custom buttons
+      and the profile/project selects.** Tailwind preflight can suppress UA focus
+      rings; add a `focus-visible:ring` utility. Skill: §1 `focus-states`, §2
+      `cursor-pointer`.
+
+**Out of scope for this pass** (skill flagged but not worth touching now):
+- The skill's App-UI/Common-Rules (touch 44pt, safe areas, haptics) — this is a
+  desktop Chrome extension, not iOS/Android; rules are §2-`touch-target-size`-style
+  mobile guidance and don't apply to a pointer-driven 384px popup.
+- A repo-wide design-system (`--persist` MASTER.md) — the popup is one screen; a
+  full design-system is Phase-4-shaped work, not a polish item.
+
+---
+
 ## Phase 3: API Bridge (Full Integration)
 
 **Goal**: Direct, live handoff from wysiwyg to a target project's pipeline. This is where
