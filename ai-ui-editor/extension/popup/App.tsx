@@ -704,6 +704,10 @@ const App: React.FC = () => {
           : 'AI UI Editor'}
       </h1>
       {/* P1-2: Mode indicator + P2-3: profile selector */}
+      {/* A7: Project selector promoted to header row — first-class peer of
+          Profile. The common case (switch active project) is a one-click
+          dropdown; advanced management (global override, add project) stays
+          in the repurposed <details> block below. */}
       <div className="mb-3 flex items-center gap-2">
         <span className={`text-xs px-2 py-1 rounded ${
           isExportMode
@@ -712,11 +716,27 @@ const App: React.FC = () => {
         }`}>
           {isExportMode ? 'Requirements Export' : 'CSS Edit'}
         </span>
+        {/* Project — mirrors Profile's <label>/<select> styling. */}
+        <label className="text-xs text-gray-600 ml-auto flex items-center gap-1">
+          Project
+          <select
+            className="border rounded px-1 py-0.5 text-xs focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
+            value={activeProj?.id ?? ''}
+            onChange={(e) => handleSelectProject(e.target.value)}
+          >
+            <option value="">(none)</option>
+            {registryState?.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
         {/* P2-3: Profile dropdown — first-class UI, not buried in <details>.
             Shows available built-in + JSON-loaded profile names fetched from
             GET /api/files/profiles; the user's choice is sent as `projectProfile`
             and persisted per origin in chrome.storage under `profilePrefs`. */}
-        <label className="text-xs text-gray-600 ml-auto flex items-center gap-1">
+        <label className="text-xs text-gray-600 flex items-center gap-1">
           Profile
           <select
             className="border rounded px-1 py-0.5 text-xs focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
@@ -740,12 +760,30 @@ const App: React.FC = () => {
         </label>
       </div>
 
-      {/* P1-0: Project Registry. Lets the user register on-disk project paths and
-          pick the active one for this tab's origin (or set a global override). */}
+      {/* A7: Manage projects — the common case (switch active project) is a
+          first-class select in the header; this <details> block holds the
+          advanced controls (per-tab active, global override, add project).
+          A custom chevron + aria-expanded (native to <details>) replaces the
+          old bare "Project: name" summary. */}
       <details className="mb-3 border rounded text-xs">
-        <summary className="cursor-pointer px-2 py-1 font-medium text-gray-700">
-          Project{activeProj ? `: ${activeProj.displayName}` : ' (none)'}
+        <summary className="cursor-pointer px-2 py-1 font-medium text-gray-700 list-none marker:content-none flex items-center gap-1 select-none">
+          <svg
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            width="12" height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-gray-500"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          Manage projects{activeProj ? ` — ${activeProj.displayName}` : ''}
         </summary>
+        {/* The common case (switch active project for this tab) now lives in the
+            header. Advanced management: per-tab active + global override + the
+            Add-project form remain below. */}
         <div className="p-2 space-y-2">
 
                     {registryState && registryState.projects.length > 0 ? (

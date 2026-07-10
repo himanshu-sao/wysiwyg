@@ -396,7 +396,7 @@ Findings below are anchored to the skill's named rules; severities are the skill
 
 ### 🟢 Medium / polish
 
-- [ ] **A7 — Promote Project to the header row (next to Profile), or add a
+- [x] **A7 — Promote Project to the header row (next to Profile), or add a
       disclosure affordance.** After P2-3, Profile is a header first-class
       control but the Project registry (which sets the write root) is still buried
       in `<details>` with no chevron or `aria-expanded`. Skill: §9
