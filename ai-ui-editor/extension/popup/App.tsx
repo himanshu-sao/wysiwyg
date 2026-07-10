@@ -4,6 +4,8 @@ import { applyDiff } from '../shared/diff';
 import { resolveApplyBase } from '../shared/apply';
 import { sanitizeHtml, getPreviewSandbox } from '../shared/sanitize';
 
+const MIDDLEWARE_HTTP_URL = 'http://localhost:3000';
+
 const App: React.FC = () => {
   const [elementContext, setElementContext] = useState<EditRequest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +59,16 @@ const App: React.FC = () => {
   const [newProjectPath, setNewProjectPath] = useState('');
   const [registryStatus, setRegistryStatus] = useState('');
   const [currentOrigin, setCurrentOrigin] = useState('');
+  // P2-3: profile selection. `availableProfiles` is the union of built-in +
+  // JSON-loaded profile names fetched from GET /api/profiles on popup open.
+  // `selectedProfile` is the user's choice for this request (defaults to the
+  // active project's profileName, then URL-detected, then 'generic'). Persisted
+  // per origin (`lastProfileByOrigin`) in chrome.storage.local alongside the
+  // P1-0 registry.
+  const [availableProfiles, setAvailableProfiles] = useState<string[]>(['generic', 'example']);
+  const [selectedProfile, setSelectedProfile] = useState<string>('');
+  // Track whether we've loaded the persisted profile choice for this origin.
+  const [profileLoaded, setProfileLoaded] = useState(false);
   // The active project for the current tab's origin (global override wins).
   // Recomputed whenever registryState or currentOrigin changes (see useMemo below).
 
@@ -197,6 +209,34 @@ const App: React.FC = () => {
     // the project dropdown renders immediately (not only after a user mutation).
     chrome.runtime.sendMessage({ type: 'registry-list' });
 
+    // P2-3: fetch available profile names from the middleware on popup open so
+    // the profile dropdown is populated (built-in + JSON-loaded profiles).
+    // Falls back to ['generic', 'example'] silently when the middleware is down.
+    fetch(`${MIDDLEWARE_HTTP_URL}/api/files/profiles`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { profiles?: string[] } | null) => {
+        if (data?.profiles && data.profiles.length > 0) {
+          setAvailableProfiles(data.profiles);
+        }
+      })
+      .catch(() => {}); // middleware may not be running yet — fine
+
+    // P2-3: restore the last-used profile for this origin from chrome.storage.
+    // We store it alongside the registry under a separate key so it survives
+    // across popup opens.
+    if (currentOrigin) {
+      chrome.storage.local.get('profilePrefs').then((r) => {
+        const prefs = (r.profilePrefs as Record<string, string>) ?? {};
+        const persisted = prefs[currentOrigin];
+        if (persisted) {
+          setSelectedProfile(persisted);
+        }
+        setProfileLoaded(true);
+      });
+    } else {
+      setProfileLoaded(true);
+    }
+
     return () => {
       if (messageListenerRef.current) {
         chrome.runtime.onMessage.removeListener(messageListenerRef.current);
@@ -236,6 +276,21 @@ const App: React.FC = () => {
     const active = activeProject();
     if (active?.path) return active.path;
     return elementContext?.context.projectRoot || '';
+  }
+
+  // P2-3: the profile name to send with every request. Precedence:
+  // user selection > persisted per-origin > active project's profileName >
+  // generic. When profileLoaded is false (still restoring from storage), we
+  // don't want to accidentally overwrite with 'generic', so use the active
+  // project's profileName as a fallback until the persisted value arrives.
+  function resolvedProfile(): string {
+    if (selectedProfile) return selectedProfile;
+    if (!profileLoaded) {
+      // Still loading — use the active project's hint, or empty so the
+      // middleware falls back to URL detection.
+      return activeProject()?.profileName ?? '';
+    }
+    return 'generic';
   }
 
   // P1-0: handlers for the project registry UI (Add project / select active
@@ -325,12 +380,22 @@ const App: React.FC = () => {
     };
 
     if (isExportMode) {
-      // P1-5: Use requirements export endpoint (non-streaming for now)
+      // P1-5/P2-3: Use requirements export endpoint with registry-aware profile
+      // resolution. Send the active registered project + the user's selected
+      // profile name so the middleware's ProfileManager can layer rootPath and
+      // pick the right template (including JSON-loaded profiles).
+      const activeProj = activeProject();
       chrome.runtime.sendMessage({
         type: 'send-to-server',
         data: {
           endpoint: '/api/ai/export-requirements',
-          body: request,
+          body: {
+            ...request,
+            projectProfile: resolvedProfile(),
+            registeredProject: activeProj
+              ? { path: activeProj.path, profileName: activeProj.profileName }
+              : undefined,
+          },
         },
       });
     } else {
@@ -414,7 +479,13 @@ const App: React.FC = () => {
           element: elementContext?.element,
           instruction,
           projectRoot: root,
-          projectProfile: activeProject()?.profileName as ('antikythera' | 'generic') | undefined,
+          // P2-3: send the resolved profile name (from the dropdown) + the
+          // active registered project so ProfileManager can layer rootPath and
+          // pick the right template. The old 'antikythera' hardcoded cast is gone.
+          projectProfile: resolvedProfile(),
+          registeredProject: activeProject()
+            ? { path: activeProject()!.path, profileName: activeProject()!.profileName }
+            : undefined,
         },
       },
     });
@@ -438,7 +509,7 @@ const App: React.FC = () => {
     // origin; the sample project root comes from the captured element context).
     try {
       const res = await fetch(
-        `http://localhost:3000/api/files/read?file=${encodeURIComponent(pickedFile)}&projectRoot=${encodeURIComponent(effectiveProjectRoot())}`
+        `${MIDDLEWARE_HTTP_URL}/api/files/read?file=${encodeURIComponent(pickedFile)}&projectRoot=${encodeURIComponent(effectiveProjectRoot())}`
       );
       if (!res.ok) {
         const txt = await res.text();
@@ -492,9 +563,15 @@ const App: React.FC = () => {
   // a generic name when nothing is registered).
   const activeProj = activeProject();
   const projectLabel = activeProj?.displayName || 'project';
-  const intakeLabel = (activeProj && activeProj.profileName === 'example')
+  // P2-3: intake label from the user's selected profile. When the active
+  // project has a profileName that matches 'example', use the known intake
+  // path; otherwise use a generic label.
+  const resolvedProfileName = resolvedProfile();
+  const intakeLabel = resolvedProfileName === 'example'
     ? '.wysiwyg/ideas.md'
-    : 'ideas.md';
+    : resolvedProfileName
+      ? `${resolvedProfileName} backlog`
+      : 'ideas.md';
 
   return (
     <div className="p-6 w-96">
@@ -519,6 +596,33 @@ const App: React.FC = () => {
           Project{activeProj ? `: ${activeProj.displayName}` : ' (none)'}
         </summary>
         <div className="p-2 space-y-2">
+
+          {/* P2-3: Profile template selector. Shows available built-in + JSON-loaded
+              profile names; the user's choice is sent as `projectProfile` and persisted
+              per origin. Defaults to the active project's profileName, then generic. */}
+          <label className="block text-gray-600">
+            Profile template
+            <select
+              className="ml-2 border rounded px-1 py-0.5"
+              value={resolvedProfile()}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedProfile(v);
+                // Persist per origin so the choice survives popup reopens.
+                if (currentOrigin) {
+                  chrome.storage.local.get('profilePrefs').then((r) => {
+                    const prefs = (r.profilePrefs as Record<string, string>) ?? {};
+                    prefs[currentOrigin] = v;
+                    chrome.storage.local.set({ profilePrefs: prefs });
+                  });
+                }
+              }}
+            >
+              {availableProfiles.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
           {registryState && registryState.projects.length > 0 ? (
             <>
               <label className="block text-gray-600">

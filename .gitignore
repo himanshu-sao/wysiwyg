@@ -44,3 +44,10 @@ temp/
 
 # AI UI Editor
 ai-ui-editor/**/node_modules/
+/.agents
+/.claude
+/.codex
+/.continue
+/.gemini
+/.opencode
+/.warp

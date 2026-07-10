@@ -1,0 +1,17 @@
+{
+  "name": "example",
+  "urlPatterns": ["localhost:5173", "localhost:8006"],
+  "techStack": ["React 19", "Vite", "Tailwind", "TypeScript"],
+  "directories": { "backend": "api/", "frontend": "src/", "requirements": ".wysiwyg" },
+  "artifactFormat": ["spec.md", "architecture.md", "tests.md"],
+  "intakeFile": ".wysiwyg/ideas.md",
+  "agents": ["Architect", "Tester", "Executor"],
+  "promptContext": "This project is a modern web application with:\n- Backend: api/ (REST API server)\n- Frontend: src/ (React 19, Vite, Tailwind)\n- Requirements: .wysiwyg/ (spec artifacts, ideas backlog)\n- Agents: Architect, Tester, Executor\n- Pipeline: INTAKE → DISCOVERY → BLUEPRINT → IMPLEMENTATION → VERIFY → DONE",
+  "markers": ["package.json"],
+  "intakeLineFormat": { "template": "- [${id}] ${title} | Priority: ${priority}" },
+  "artifactTemplates": [
+    { "name": "spec.md", "sections": ["Overview", "Requirements", "Scope", "Edge Cases", "Constraints", "PII-Secret Handling", "Acceptance Criteria"] },
+    { "name": "architecture.md", "sections": ["Context", "Decision", "Alternatives", "Consequences"] },
+    { "name": "tests.md", "sections": ["Unit", "Integration", "E2E"] }
+  ]
+}

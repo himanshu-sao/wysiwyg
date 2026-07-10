@@ -127,7 +127,24 @@ export interface RequirementsExportRequest {
   element: ElementContext;
   instruction: string;
   context: EditContext;
-  projectProfile?: 'example' | 'generic';
+  // P2-2: widened from 'example' | 'generic' to a free string so JSON-loaded
+  // profiles (config/profiles/*.json) and registry-supplied profile names can be
+  // referenced. Unknown names fall back to `generic` (see ProfileManager).
+  projectProfile?: string;
+  // P2-2: the active registered project (from the P1-0 registry) sent by the
+  // extension when one is selected for the current origin. When present, the
+  // middleware resolves the profile from it (layering `path` → rootPath) and
+  // `projectProfile` above, if also set, may re-point the template only.
+  registeredProject?: RegisteredProjectRef;
+}
+
+// P2-2: the minimal registered-project reference the middleware needs to do
+// registry-aware profile resolution (the full RegisteredProject, incl. id/
+// registeredAt, stays in the extension's registry; only path + profileName
+// cross the boundary). Mirrored to extension/shared/types.ts.
+export interface RegisteredProjectRef {
+  path: string;          // absolute on-disk path → authoritative projectRoot
+  profileName: string;   // which built-in/JSON profile template to layer onto
 }
 
 // P1-6: AI-suggested priority for an exported requirement. The user can override
@@ -159,7 +176,8 @@ export interface AppendIdeasRequest {
   element?: ElementContext;
   instruction: string;
   projectRoot: string;                // user-registered on-disk path (P1-0), NOT origin
-  projectProfile?: 'example' | 'generic';
+  // P2-2: widened so any profile name (built-in or JSON-loaded) is accepted.
+  projectProfile?: string;
 }
 
 // P1-6: Response from POST /api/files/append-ideas.

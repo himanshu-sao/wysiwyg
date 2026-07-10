@@ -1,8 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
 import { EditRequest, EditResponse, EditContext, ElementContext, RequirementsExportRequest, RequirementsExportResponse } from '../shared/types';
 import { generateEditOptions, generateEditOptionsStream, generateRequirementsExport } from '../ai/OpencodeClient';
-import { getProfile, detectProfile } from '../config/project-profiles';
+import { detectProfile } from '../config/project-profiles';
+import { ProfileManager } from '../services/ProfileManager';
 import { resolveSource } from '../services/SourcemapResolver';
+
+// P2-2: registry-aware profile resolution for the export endpoint. Falls back to
+// the legacy getProfile/detectProfile path when no registered project is sent.
+const profileManager = new ProfileManager();
 
 /**
  * P7: enrich the edit context with the element's resolved source file/line/code
@@ -154,11 +159,18 @@ const aiRoutes: FastifyPluginAsync = async (app) => {
     '/export-requirements',
   async (request, reply) => {
     try {
-      const { element, instruction, context, projectProfile } = request.body;
+      const { element, instruction, context, projectProfile, registeredProject } = request.body;
 
-      // P1-3: Auto-detect profile if not specified
-      const profile = projectProfile
-        ? getProfile(projectProfile)
+      // P1-3/P2-2: resolve the profile. Prefer a registered project override
+      // (sent by the extension when one is active for the origin), then the
+      // request's `projectProfile` name, then URL auto-detection — identical to
+      // the pre-P2-2 behavior when none of the new fields are set.
+      const profile = registeredProject || projectProfile
+        ? await profileManager.resolve({
+            registered: registeredProject ?? null,
+            projectProfile,
+            url: context.url,
+          })
         : detectProfile(context.url);
 
       // P7: resolve source via sourcemap (same as edit endpoint)

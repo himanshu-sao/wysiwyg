@@ -8,6 +8,13 @@ import { validateDiff } from '../services/DiffValidator';
 import { writeFileWithGit, writeFilesWithGit, type FileEntry } from '../services/GitManager';
 import { safeFilePath, resolveProjectRoot } from '../services/PathSanitizer';
 import { getProfile } from '../config/project-profiles';
+import { ProfileManager } from '../services/ProfileManager';
+
+// P2-2: registry-aware profile resolver. Supersedes the plain `getProfile(name)`
+// call in appendRequirements when a registered project is supplied; falls back to
+// the same built-in lookup when one isn't. Module-scoped; lazily caches its
+// JSON-profile load (config/profiles/*.json).
+const profileManager = new ProfileManager();
 
 // P4: Zod schemas for request validation (standalone, not extending TS interfaces)
 const ValidateRequestSchema = z.object({
@@ -54,6 +61,9 @@ const PROJECT_MARKERS = [
 // P1-6: Zod schema for POST /api/files/append-ideas. `projectRoot` is required
 // (P1-0 unblocked it — the extension now sends the registered on-disk path).
 // `projectProfile` is optional; absent → the endpoint profiles by projectRoot.
+// P2-2: `projectProfile` widened from `z.enum(['example','generic'])` to a free
+// string so JSON-loaded profiles can be referenced; `registeredProject` carries
+// the active registry entry for registry-aware resolution (ProfileManager).
 const AppendIdeasRequestSchema = z.object({
   spec: z.string().min(1),
   title: z.string().optional(),
@@ -64,7 +74,11 @@ const AppendIdeasRequestSchema = z.object({
   element: z.object({}).passthrough().optional(),
   instruction: z.string(),
   projectRoot: z.string(),
-  projectProfile: z.enum(['example', 'generic']).optional(),
+  projectProfile: z.string().optional(),
+  registeredProject: z.object({
+    path: z.string(),
+    profileName: z.string(),
+  }).optional(),
 });
 
 /** P1-6: regex that matches `ID-(\d+)` in any context (intake file line or dir name). */
@@ -145,7 +159,20 @@ export async function appendRequirements(
   req: z.infer<typeof AppendIdeasRequestSchema>
 ): Promise<AppendIdeasResponse> {
   const projectRoot = path.resolve(req.projectRoot);
-  const profile = getProfile(req.projectProfile || 'generic');
+  // P2-2: registry-aware profile resolution. When the extension sends the
+  // active registered project (`req.registeredProject`), resolve through
+  // ProfileManager (layers `path` → rootPath + picks the template); otherwise
+  // fall back to the request's `projectProfile` name, then `getProfile`'s
+  // generic default — identical to the pre-P2-2 behavior when neither is set.
+  let profile;
+  if (req.registeredProject || req.projectProfile) {
+    profile = await profileManager.resolve({
+      registered: req.registeredProject ?? null,
+      projectProfile: req.projectProfile,
+    });
+  } else {
+    profile = getProfile('generic');
+  }
   const priority: RequirementPriority = req.priority || 'Medium';
   const title = req.title?.trim() || req.instruction.slice(0, 80);
 
@@ -312,6 +339,17 @@ const filesRoutes: FastifyPluginAsync = async (app) => {
         file: rawFile ?? '',
         error: error.message || 'Failed to read file',
       });
+    }
+  });
+
+  // P2-3: list all known profile names (built-in + JSON-loaded) so the popup can
+  // render a profile-selection dropdown. Read-only; accepts no params.
+  app.get('/profiles', async (_request, reply) => {
+    try {
+      const names = await profileManager.listProfileNames();
+      return reply.send({ profiles: names });
+    } catch (error: any) {
+      return reply.status(500).send({ profiles: [], error: error.message });
     }
   });
 

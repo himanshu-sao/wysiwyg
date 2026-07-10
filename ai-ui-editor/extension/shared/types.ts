@@ -127,7 +127,22 @@ export interface RequirementsExportRequest {
   element: ElementContext;
   instruction: string;
   context: EditContext;
-  projectProfile?: 'example' | 'generic';
+  // P2-2: widened from 'example' | 'generic' to a free string so JSON-loaded
+  // profiles and registry-supplied profile names can be referenced. Mirrored to
+  // middleware/src/shared/types.ts.
+  projectProfile?: string;
+  // P2-2: the active registered project (from the P1-0 registry) — sent when one
+  // is selected for the current origin so the middleware can do registry-aware
+  // profile resolution (layering `path` → rootPath). Mirrored.
+  registeredProject?: RegisteredProjectRef;
+}
+
+// P2-2: the minimal registered-project reference the middleware needs to do
+// registry-aware profile resolution (only path + profileName cross the
+// boundary). Mirrors middleware/src/shared/types.ts.
+export interface RegisteredProjectRef {
+  path: string;          // absolute on-disk path → authoritative projectRoot
+  profileName: string;   // which built-in/JSON profile template to layer onto
 }
 
 // Message types for Chrome extension messaging.
@@ -187,7 +202,8 @@ export interface AppendIdeasRequest {
   element?: ElementContext;
   instruction: string;
   projectRoot: string;
-  projectProfile?: 'example' | 'generic';
+  // P2-2: widened so any profile name (built-in or JSON-loaded) is accepted.
+  projectProfile?: string;
 }
 
 // P1-6: Response from POST /api/files/append-ideas.

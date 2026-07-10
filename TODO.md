@@ -261,15 +261,39 @@ not only provider-side config.)
 
 **Goal**: Richer per-project context and selection UX on top of the P1-0 registry.
 
-### P2-1: Profile Schema
-- [ ] Define profile JSON schema (extends `ProjectProfile`; now includes registered path + markers).
-- [ ] Document profile format (update `PROJECT_PROFILE.md`).
+### P2-1: Profile Schema ✅ shipped (2026-07-10)
+- [x] Define profile JSON schema (extends `ProjectProfile`; now includes registered path + markers).
+  - `ProjectProfile` extended with `rootPath` (runtime-only), `markers`, `intakeLineFormat`,
+    `artifactTemplates`. `ProfileEntry` = on-disk subset (`Omit<ProjectProfile, 'rootPath'>`).
+  - `validateProfileEntry()` validates JSON files at load boundary — rejects missing required
+    fields, wrong types, and stray `rootPath`. Pure (no fs); used by `ProfileManager` (P2-2).
+  - Two JSON profiles on disk: `config/profiles/example.json` + `config/profiles/generic.json`,
+    kept in lockstep with the in-code `PROFILES` table.
+- [x] Document profile format (update `PROJECT_PROFILE.md`).
+  - Schema Reference section (§Schema) covers `ProfileEntry`, `validateProfileEntry`, the
+    on-disk vs. in-code split, and P2-1 extension fields.
 
-### P2-2: Profile Loader
-- [ ] Add `ProfileManager` service in `middleware/src/services/` that reads from the
+### P2-2: Profile Loader ✅ shipped (2026-07-10)
+- [x] Add `ProfileManager` service in `middleware/src/services/` that reads from the
       **registered project registry** (P1-0) plus built-in profiles.
-- [ ] Load profiles from `config/profiles/*.json` (provider-side known projects).
-- [ ] Prompt template uses profile context (already true for built-ins; extend to registry).
+  - `ProfileManager` (262 lines): composes in-code `PROFILES` (P1-1) + on-disk JSON profiles
+    (P2-1) + user-registered override (`RegisteredProjectRef` from the P1-0 registry).
+    Resolution order: registered override → JSON file → in-code built-in → `generic` fallback.
+    `rootPath` is layered only from the registered path; a relative path is rejected.
+    `resolve()` replaces `getProfile` for registry-aware callers; `getProfile`/`detectProfile`
+    stay for URL-only paths.
+- [x] Load profiles from `config/profiles/*.json` (provider-side known projects).
+  - Lazy-loaded once, cached; malformed files skipped with logged warning; non-.json files ignored.
+    `lastLoadError()` surfaces diagnostics. `listProfileNames()` returns deduped union of
+    built-ins + loaded JSON profiles.
+- [x] Prompt template uses profile context (already true for built-ins; extend to registry).
+  - `routes/ai.ts` (`/export-requirements`) resolves profile via `ProfileManager.resolve()`
+    when `registeredProject` or `projectProfile` is sent; falls back to `detectProfile(url)`
+    otherwise. `routes/files.ts` (`/append-ideas`) likewise uses `ProfileManager` when a
+    registered project is present, preserving the old `getProfile('generic')` fallback.
+  - `RegisteredProjectRef` type mirrored in both `shared/types.ts`; `projectProfile` widened
+    from `'example' | 'generic'` to `string` so JSON-loaded profiles can be referenced.
+  - Tests: `ProfileManager.test.ts` (35 tests, all passing).
 
 ### P2-3: UI for Profile Selection
 - [ ] Profile/project dropdown in popup (driven by the registry, not just URL detection).
@@ -468,7 +492,7 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 
 ### Test results (re-verified 2026-07-05)
 
-> All green. **144 middleware + 77 extension = 221 tests passing.** Both packages
+> All green. **179 middleware + 77 extension = 256 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
 > file list; its count is included in the middleware total.)
@@ -481,6 +505,7 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 | Middleware | `OpencodeClient.normalizePriority.test.ts` *(P1-6)* | 6 | ✅ |
 | Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
+| Middleware | `ProfileManager.test.ts` *(P2-2)* | 35 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
 | Middleware | `ProjectProfiles.test.ts` | 19 | ✅ |
 | Middleware | `PromptTemplates.requirements.test.ts` | 12 | ✅ |
@@ -489,14 +514,14 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
 | Middleware | `docSync.test.ts` *(doc-consistency guard, re-pointed at consolidated set)* | 16 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **144** | ✅ |
+| **Middleware Total** | | **179** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.requirements.test.ts` | 17 | ✅ |
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
 | **Extension Total** | | **77** | ✅ |
-| **Grand Total** | | **221** | ✅ |
+| **Grand Total** | | **256** | ✅ |
 
 ### How this audit changed
 
@@ -508,6 +533,13 @@ The next real milestone is **Phase 2** (richer profile system on top of the P1-0
   this `TODO.md` appendix set; renamed `VISION_REQUIREMENTS.md` → `VISION.md`; rewrote the
   `docSync.test.ts` assertions to pin the consolidated set (16 assertions). Test count
   unchanged at 221. Next milestone: Phase 2 + deferred enhancements.
+- **2026-07-10 (P2-1/P2-2):** Profile Schema + Profile Loader shipped. `ProjectProfile`
+  extended with P2-1 fields; `validateProfileEntry()` validates on-disk JSON profiles;
+  `config/profiles/example.json` + `generic.json` on disk. `ProfileManager` service
+  (262 lines) composes in-code built-ins + JSON profiles + P1-0 registry overrides;
+  routes `ai.ts` and `files.ts` wired to `ProfileManager.resolve()`. `RegisteredProjectRef`
+  type mirrored. `ProfileManager.test.ts` (+35 tests → 256). **P2-1/P2-2 complete.**
+  Next: P2-3 (profile dropdown UI) + P2-4 (artifact template injection).
 
 ---
 

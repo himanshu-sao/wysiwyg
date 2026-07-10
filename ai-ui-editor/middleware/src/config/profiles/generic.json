@@ -1,0 +1,14 @@
+{
+  "name": "generic",
+  "urlPatterns": ["localhost:*"],
+  "techStack": ["React", "Vite"],
+  "directories": { "frontend": "src/", "requirements": ".wysiwyg" },
+  "artifactFormat": ["spec.md"],
+  "intakeFile": "TODO.md",
+  "promptContext": "A generic React/Vue/Svelte project with:\n- Frontend: src/ directory\n- Standard build tooling (Vite/Webpack)\n- CSS/styling support",
+  "markers": ["package.json", "pyproject.toml", "Cargo.toml", "go.mod", ".git"],
+  "intakeLineFormat": { "template": "- [${id}] ${title} | Priority: ${priority}" },
+  "artifactTemplates": [
+    { "name": "spec.md", "sections": ["Overview", "Requirements", "Edge Cases", "Acceptance Criteria"] }
+  ]
+}
