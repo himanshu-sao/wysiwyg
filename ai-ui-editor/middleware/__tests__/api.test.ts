@@ -74,4 +74,23 @@ describe('Middleware API (Integration - requires running server)', () => {
     expect(data.valid).toBeDefined();
     expect(data.errors).toBeDefined();
   }, 10000);
+
+  // P2-3: the popup fetches available profile names on open via this endpoint
+  // so the profile dropdown can show built-in + JSON-loaded profiles.
+  it('should list profile names via GET /api/files/profiles', async () => {
+    const running = await isServerRunning();
+    if (!running) {
+      console.log('SKIP: Server not running');
+      return;
+    }
+    const response = await fetch(`${BASE_URL}/api/files/profiles`);
+    expect(response.ok).toBe(true);
+    const data = (await response.json()) as { profiles?: string[]; error?: string };
+    expect(data.profiles).toBeDefined();
+    expect(Array.isArray(data.profiles)).toBe(true);
+    expect(data.profiles!.length).toBeGreaterThan(0);
+    // At minimum, the two built-in profiles must always be present.
+    expect(data.profiles).toContain('generic');
+    expect(data.profiles).toContain('example');
+  }, 5000);
 });

@@ -69,6 +69,11 @@ const App: React.FC = () => {
   const [selectedProfile, setSelectedProfile] = useState<string>('');
   // Track whether we've loaded the persisted profile choice for this origin.
   const [profileLoaded, setProfileLoaded] = useState(false);
+  // P2-3: guard so the profilePrefs restore runs exactly once per popup open,
+  // when currentOrigin first resolves to a non-empty value. Without this,
+  // the original mount-time read raced against the async get-current-element
+  // response and would miss the persisted profile because currentOrigin was ''.
+  const profilePrefsLoadedRef = useRef(false);
   // The active project for the current tab's origin (global override wins).
   // Recomputed whenever registryState or currentOrigin changes (see useMemo below).
 
@@ -221,22 +226,6 @@ const App: React.FC = () => {
       })
       .catch(() => {}); // middleware may not be running yet — fine
 
-    // P2-3: restore the last-used profile for this origin from chrome.storage.
-    // We store it alongside the registry under a separate key so it survives
-    // across popup opens.
-    if (currentOrigin) {
-      chrome.storage.local.get('profilePrefs').then((r) => {
-        const prefs = (r.profilePrefs as Record<string, string>) ?? {};
-        const persisted = prefs[currentOrigin];
-        if (persisted) {
-          setSelectedProfile(persisted);
-        }
-        setProfileLoaded(true);
-      });
-    } else {
-      setProfileLoaded(true);
-    }
-
     return () => {
       if (messageListenerRef.current) {
         chrome.runtime.onMessage.removeListener(messageListenerRef.current);
@@ -251,6 +240,24 @@ const App: React.FC = () => {
     const hint = `Editing: ${selector} (${context.framework})`;
     setContextHint(hint);
   }
+
+  // P2-3: restore persisted profile choice once currentOrigin resolves.
+  // Runs as a separate effect keyed on currentOrigin so it fires AFTER the
+  // async get-current-element callback sets the real origin — no more race
+  // between mount-time storage read and the origin arriving later.
+  // The profilePrefsLoadedRef ensures it runs only once per popup open.
+  useEffect(() => {
+    if (!currentOrigin || profilePrefsLoadedRef.current) return;
+    chrome.storage.local.get('profilePrefs').then((r) => {
+      const prefs = (r.profilePrefs as Record<string, string>) ?? {};
+      const persisted = prefs[currentOrigin];
+      if (persisted) {
+        setSelectedProfile(persisted);
+      }
+      setProfileLoaded(true);
+      profilePrefsLoadedRef.current = true;
+    });
+  }, [currentOrigin]);
 
   // P1-0: active project for the current origin (global override wins).
   // Computed as a regular function call so it re-runs on every render with the
@@ -576,9 +583,11 @@ const App: React.FC = () => {
   return (
     <div className="p-6 w-96">
       <h1 className="text-lg font-bold mb-4">
-        {isExportMode ? `Export to ${projectLabel}` : 'AI UI Editor'}
+        {isExportMode
+          ? `Export to ${projectLabel} (${resolvedProfileName})`
+          : 'AI UI Editor'}
       </h1>
-      {/* P1-2: Mode indicator */}
+      {/* P1-2: Mode indicator + P2-3: profile selector */}
       <div className="mb-3 flex items-center gap-2">
         <span className={`text-xs px-2 py-1 rounded ${
           isExportMode
@@ -587,6 +596,32 @@ const App: React.FC = () => {
         }`}>
           {isExportMode ? 'Requirements Export' : 'CSS Edit'}
         </span>
+        {/* P2-3: Profile dropdown — first-class UI, not buried in <details>.
+            Shows available built-in + JSON-loaded profile names fetched from
+            GET /api/files/profiles; the user's choice is sent as `projectProfile`
+            and persisted per origin in chrome.storage under `profilePrefs`. */}
+        <label className="text-xs text-gray-600 ml-auto flex items-center gap-1">
+          Profile
+          <select
+            className="border rounded px-1 py-0.5 text-xs"
+            value={resolvedProfile()}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedProfile(v);
+              if (currentOrigin) {
+                chrome.storage.local.get('profilePrefs').then((r) => {
+                  const prefs = (r.profilePrefs as Record<string, string>) ?? {};
+                  prefs[currentOrigin] = v;
+                  chrome.storage.local.set({ profilePrefs: prefs });
+                });
+              }
+            }}
+          >
+            {availableProfiles.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {/* P1-0: Project Registry. Lets the user register on-disk project paths and
@@ -597,33 +632,7 @@ const App: React.FC = () => {
         </summary>
         <div className="p-2 space-y-2">
 
-          {/* P2-3: Profile template selector. Shows available built-in + JSON-loaded
-              profile names; the user's choice is sent as `projectProfile` and persisted
-              per origin. Defaults to the active project's profileName, then generic. */}
-          <label className="block text-gray-600">
-            Profile template
-            <select
-              className="ml-2 border rounded px-1 py-0.5"
-              value={resolvedProfile()}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSelectedProfile(v);
-                // Persist per origin so the choice survives popup reopens.
-                if (currentOrigin) {
-                  chrome.storage.local.get('profilePrefs').then((r) => {
-                    const prefs = (r.profilePrefs as Record<string, string>) ?? {};
-                    prefs[currentOrigin] = v;
-                    chrome.storage.local.set({ profilePrefs: prefs });
-                  });
-                }
-              }}
-            >
-              {availableProfiles.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </label>
-          {registryState && registryState.projects.length > 0 ? (
+                    {registryState && registryState.projects.length > 0 ? (
             <>
               <label className="block text-gray-600">
                 Active project for this tab
