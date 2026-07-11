@@ -645,9 +645,12 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 
 #### P1-7 follow-ups explicitly deferred (non-blocking)
 
-- **DevTools panel wiring** — `extension/devtools/` has a full React panel that listens for
-  `edit-applied` / `edit-undone` messages, but the popup doesn't broadcast them. *Deferred —
-  consider wiring in Phase 2.*
+- **DevTools panel wiring** — ✅ **shipped** `b0d3196` (P1.5-2, 2026-07-10). Added
+  `edit-applied`/`edit-undone`/`undo-specific` to `ExtensionMessage` union (both mirrored
+  `shared/types.ts`); popup broadcasts `edit-applied` after successful write (distinguished
+  from undo by `commitHash`); `undo-specific` handler in background.ts routes to
+  `/api/git/undo`; DevToolsPanel.tsx needed no changes — already handled the messages
+  correctly. Also fixed silent write-success fallthrough bug.
 - **Export-mode streaming** — Edit mode streams via `/api/ai/edit/stream`; Export yields a
   single spec, so streaming adds little value. *Deferred, not pursued.*
 
@@ -738,7 +741,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
   incl. a scaffolded-spec integration case against the example profile). Drifted pre-P2-4
   row counts (`ProfileManager` 35→19, `ProjectProfiles` 19→32) corrected against the live
   reporter. → **193 middleware + 104 extension = 297 tests**. **P2-4 + P2.5 complete → Phase 2
-  done.** Next: Phase 3 (API Bridge) or the deferred E2E harness / DevTools panel wiring.
+  done.** DevTools panel wired (P1.5-2, `b0d3196`). Next: Phase 3 (API Bridge) or the deferred E2E harness (P1.5-3).
 
 ---
 
