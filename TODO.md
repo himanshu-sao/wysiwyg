@@ -558,24 +558,43 @@ second optional descriptor, sequenced after submit.
       (`apiKey`/`api_key`/`token`/`secret`) + the shipped-JSON lockstep for `intakeApi`.
       193 → 216 mw tests (104 ext unchanged → **320 total**). `tsc --noEmit` clean both pkgs.
 
-### P3-2: `PipelineClient` service (the generic caller)
-- [ ] Add `middleware/src/services/PipelineClient.ts` following the one-service-per-file
+### P3-2: `PipelineClient` service (the generic caller) ✅ shipped (2026-07-11)
+- [x] Add `middleware/src/services/PipelineClient.ts` following the one-service-per-file
       pattern already used by `GitManager`/`PathSanitizer`/`ProfileManager`.
-- [ ] Single method: `submitIdea(profile, idea, secret)` — builds the request body from
+- [x] Single method: `submitIdea(profile, idea, secret)` — builds the request body from
       `bodyTemplate` (substituting `{wysiwygField}` tokens from `idea`), injects the named
       auth value as an `Authorization: Bearer …` header, and POSTs to
       `baseUrl + upsertPath`. Returns the target's reply (best-effort `{ id, url, status }`).
-- [ ] **SSRF/auth rules from the design are enforced here, not at the route:** reject
+- [x] **SSRF/auth rules from the design are enforced here, not at the route:** reject
       non-http(s) `baseUrl`; allow `http(s)://(localhost|127.0.0.1|0.0.0.0)`; redact the auth
       value from any thrown `Error` / request log before surfacing. No auth value is ever
       written to a git commit message or a stored log line.
-- [ ] **Pure + injectable:** no hardcoded target URLs, no project-specific branches.
+- [x] **Pure + injectable:** no hardcoded target URLs, no project-specific branches.
       Constructable with a fetch adapter (mirror the `projectRegistry.ts` dependency-injection
       pattern) so `PipelineClient.test.ts` runs against an in-memory `fetch` stub — no live
       network in unit tests.
-- [ ] Test: `PipelineClient.test.ts` — body mapping, scheme rejection, localhost allowed,
+- [x] Test: `PipelineClient.test.ts` — body mapping, scheme rejection, localhost allowed,
       secret redaction in errors, 4xx/5xx surfacing (without leaking the key), and the
       no-`intakeApi` branch returning a sentinel so the route falls back to file handoff.
+
+> **P3-2 notes (shipped 2026-07-11):** `PipelineClient.ts` is one-service-per-file and
+> fetch-injected — `new PipelineClient({ fetch })` with a default global fetch (mirrors the
+> `projectRegistry.ts`/`ProfileManager` DI pattern, so tests run against an in-memory `fetch`
+> stub, no live network). Exports `submitIdea(profile, idea, secret)` plus the pure helpers
+> `assertHttpUrl`, `buildRequestBody`, `redactSecret` (each independently unit-tested).
+> Result is a discriminated `SubmitIdeaResult`: `mode: 'api'` (`ok`/`status`/best-effort
+> `id`/`url`/`body`) or `mode: 'file-fallback'` (the no-`intakeApi` sentinel for the P3-3
+> route). Token substitution: `{title}/{priority}/{spec}/{architectureHints}/{testScenarios}
+> /{edgeCases}`, arrays joined with `\n`; an unknown `{token}` is left as-is so a profile
+> miss is visible at the target. SSRF: `assertHttpUrl` rejects non-http(s) + disallowed
+> non-loopback hosts; loopback (`localhost`/`127.0.0.1`/`0.0.0.0`) always allowed. Secret:
+> injected as `Authorization: Bearer …` at call time and `redactSecret`-stripped from any
+> thrown error (network failures, 4xx, 5xx). Tests: `PipelineClient.test.ts` (25) —
+> substitution (5), SSRF (7), redaction (2), file-fallback sentinel (1), happy path incl.
+> loopback + alt id/url keys + 204-no-body (4), error surfacing without leaking the key (4),
+> SSRF-before-fetch (2). → **216 → 241 mw tests (104 ext unchanged → 365 total)**.
+> `tsc --noEmit` clean both pkgs. **P3-2 complete.** Next: P3-3 (route + popup, file
+> fallback) → P3-4 (additive `statusApi`).
 
 ### P3-3: Upsert route + popup wiring (file-vs-API decided by the profile)
 - [ ] Add `POST /api/pipeline/upsert` in a new `middleware/src/routes/pipeline.ts`
@@ -812,6 +831,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `OpencodeClient.normalizePriority.test.ts` *(P1-6)* | 6 | ✅ |
 | Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
+| Middleware | `PipelineClient.test.ts` *(P3-2)* | 25 | ✅ |
 | Middleware | `ProfileManager.test.ts` *(P2-2 + P3-1 +6)* | 25 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
 | Middleware | `ProjectProfiles.test.ts` *(P3-1 +17)* | 49 | ✅ |
@@ -821,7 +841,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
 | Middleware | `docSync.test.ts` *(doc-consistency guard)* | 18 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **216** | ✅ |
+| **Middleware Total** | | **241** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.profileSelection.test.ts` *(P2-3)* | 19 | ✅ |
@@ -829,7 +849,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
 | **Extension Total** | | **104** | ✅ |
-| **Grand Total** | | **320** | ✅ |
+| **Grand Total** | | **365** | ✅ |
 
 ### How this audit changed
 
@@ -884,6 +904,25 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
   `ProfileManager.test.ts` (+6 → 25). → **216 middleware + 104 extension = 320 tests**.
   `tsc --noEmit` clean both pkgs. **P3-1 complete.** Next: P3-2 (`PipelineClient` +
   SSRF/auth rules) → P3-3 (route + popup, file fallback) → P3-4 (additive `statusApi`).
+- **2026-07-11 (P3-2):** `PipelineClient` service shipped. The generic, profile-driven HTTP
+  intake caller (`middleware/src/services/PipelineClient.ts`) is one-service-per-file and
+  fetch-injected (`new PipelineClient({ fetch })`, defaulting to global fetch — mirrors
+  `projectRegistry.ts`/`ProfileManager` DI, no live network in unit tests). `submitIdea(profile,
+  idea, secret)` builds the body from the profile's `bodyTemplate` (`{title}`/`{priority}`/
+  `{spec}`/`{architectureHints}`/`{testScenarios}`/`{edgeCases}` — arrays `\n`-joined; unknown
+  `{token}` left as-is so a profile miss is visible at the target), attaches the named secret
+  as `Authorization: Bearer …`, and POSTs to `baseUrl + upsertPath`. Returns a discriminated
+  `SubmitIdeaResult`: `mode: 'api'` (`ok`/`status`/best-effort `id`/`url`/`body` extracted
+  loosely from the reply) or `mode: 'file-fallback'` (the no-`intakeApi` sentinel the P3-3
+  route will delegate from). SSRF enforced at the call boundary, not the route: `assertHttpUrl`
+  rejects non-http(s) schemes + disallowed non-loopback hosts; `localhost`/`127.0.0.1`/
+  `0.0.0.0` always allowed. The secret is `redactSecret`-stripped from every thrown error
+  (network failures, 4xx, 5xx) — never surfaces in messages or logs. Pure helpers
+  (`assertHttpUrl`/`buildRequestBody`/`redactSecret`) exported + unit-tested. Tests:
+  `PipelineClient.test.ts` (+25) — substitution (5), SSRF (7), redaction (2), file-fallback
+  sentinel (1), happy path (4), error-no-leak (4), SSRF-before-fetch (2). → **216 → 241
+  middleware tests (104 extension unchanged → 365 total)**. `tsc --noEmit` clean both pkgs.
+  **P3-2 complete.** Next: P3-3 (route + popup, file fallback) → P3-4 (additive `statusApi`).
 
 ---
 
