@@ -41,6 +41,8 @@ import type {
   ProbeRootResponse as MwProbeRootResponse,
   RegisteredProject as MwRegisteredProject,
   ProjectRegistryState as MwProjectRegistryState,
+  UpsertRequest as MwUpsertRequest,
+  UpsertResponse as MwUpsertResponse,
 } from '../src/shared/types';
 
 // Extension types — imported across the package boundary by relative path,
@@ -54,6 +56,8 @@ import type {
   ProbeRootResponse as ExtProbeRootResponse,
   RegisteredProject as ExtRegisteredProject,
   ProjectRegistryState as ExtProjectRegistryState,
+  UpsertRequest as ExtUpsertRequest,
+  UpsertResponse as ExtUpsertResponse,
 } from '../../extension/shared/types';
 
 const MIDDLEWARE_TYPES = path.resolve(__dirname, '..', 'src', 'shared', 'types.ts');
@@ -119,6 +123,9 @@ describe('shared/types.ts type-mirror lockstep (P1-0/P1-6 GAP_AUDIT follow-up)',
       'WriteRequest',
       'ValidateResponse',
       'ExtensionMessage',
+      // P3-3: the new upsert contract (mirror pair added in lockstep).
+      'UpsertRequest',
+      'UpsertResponse',
     ]) {
       expect(mwNames.has(required)).toBe(true);
       expect(extNames.has(required)).toBe(true);
@@ -218,5 +225,46 @@ describe('shared/types.ts type-mirror lockstep (P1-0/P1-6 GAP_AUDIT follow-up)',
     };
     const extState: ExtProjectRegistryState = mwState;
     expect(extState.projects).toHaveLength(1);
+
+    // P3-3: UpsertRequest/Response cross via /api/pipeline/upsert. UpsertRequest
+    // is AppendIdeasRequest + registeredProject; UpsertResponse is the
+    // discriminated { success, mode, id?, specPath?, remoteId?, remoteUrl? }.
+    const mwUpsertReq: MwUpsertRequest = {
+      spec: 'Sample spec body',
+      title: 'Add export button',
+      priority: 'Medium',
+      architectureHints: ['src/App.tsx'],
+      testScenarios: ['renders button'],
+      edgeCases: ['empty state'],
+      instruction: 'Add a button here',
+      projectRoot: '/tmp/sample',
+      projectProfile: 'generic',
+      registeredProject: { path: '/tmp/sample', profileName: 'generic' },
+      secret: 'redacted-bearer-value-do-not-log',
+    };
+    const extUpsertReq: ExtUpsertRequest = mwUpsertReq;
+    expect(extUpsertReq.registeredProject?.path).toBe('/tmp/sample');
+    expect(extUpsertReq.secret).toBe('redacted-bearer-value-do-not-log');
+
+    const mwUpsertResp: MwUpsertResponse = {
+      success: true,
+      mode: 'api',
+      remoteId: 'idea-42',
+      remoteUrl: 'http://localhost:8006/ideas/42',
+    };
+    const extUpsertResp: ExtUpsertResponse = mwUpsertResp;
+    expect(extUpsertResp.mode).toBe('api');
+    expect(extUpsertResp.remoteId).toBe('idea-42');
+
+    // File-fallback shape: mode='file', id=ID-XXX + specPath.
+    const mwUpsertFile: MwUpsertResponse = {
+      success: true,
+      mode: 'file',
+      id: 'ID-001',
+      specPath: '/tmp/requirements/ID-001/spec.md',
+    };
+    const extUpsertFile: ExtUpsertResponse = mwUpsertFile;
+    expect(extUpsertFile.mode).toBe('file');
+    expect(extUpsertFile.id).toBe('ID-001');
   });
 });

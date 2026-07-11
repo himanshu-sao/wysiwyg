@@ -189,6 +189,55 @@ export interface AppendIdeasResponse {
   error?: string;
 }
 
+// P3-3: Request to POST /api/pipeline/upsert. Same export payload as
+// AppendIdeasRequest, plus the registered-project reference so the route can
+// (a) resolve the profile via ProfileManager and (b) look up the named
+// intakeApi.auth secret in the registry. The route decides at call time whether
+// to POST via PipelineClient (intakeApi present) or fall back to the Phase 1
+// file-handoff path (intakeApi absent) — one endpoint, one button.
+export interface UpsertRequest {
+  spec: string;
+  title?: string;
+  priority: RequirementPriority;
+  architectureHints: string[];
+  testScenarios: string[];
+  edgeCases: string[];
+  element?: ElementContext;
+  instruction: string;
+  projectRoot: string;
+  projectProfile?: string;
+  // P2-2 / P3-3: the active registered project so the middleware can do
+  // registry-aware profile resolution + secret lookup by project id.
+  registeredProject?: RegisteredProjectRef;
+  // P3-3: the resolved value of the profile's `intakeApi.auth` name (the named
+  // secret), read by the popup from chrome.storage.local
+  // (key `wysiwyg:project-secrets:<projectId>`) and relayed here over the
+  // localhost HTTP connection. The middleware attaches it as an
+  // `Authorization: Bearer …` header and never persists it — it crosses the
+  // boundary only when `intakeApi` is present. PipelineClient redacts it from
+  // any thrown error. Absent/empty when the profile has no `intakeApi`.
+  secret?: string;
+}
+
+// P3-3: Response from POST /api/pipeline/upsert. Discriminated union — the
+// transport (HTTP vs file) is decided by the resolved profile; the popup shows
+// whichever confirmation the route returns so the user sees a consistent
+// success/error result.
+export interface UpsertResponse {
+  success: boolean;
+  // When the profile had intakeApi and PipelineClient POSTed successfully:
+  // mode='api', with optional remoteId/url from the target reply.
+  // When intakeApi was absent (file-fallback): mode='file', id=generated ID-XXX,
+  // specPath=absolute path to the created spec.md.
+  // On error: success=false, error=message.
+  mode: 'api' | 'file';
+  id?: string;          // file mode: generated ID-XXX; api mode: target's id field
+  specPath?: string;    // file mode only: absolute path to spec.md on disk
+  remoteId?: string;    // api mode only: ID extracted from target's reply
+  remoteUrl?: string;   // api mode only: URL extracted from target's reply
+  error?: string;
+}
+
 // P1-0: Response from /api/files/probe-root — used by the extension during
 // "Add project" to validate an on-disk path looks like a project root before
 // accepting it into the registry (the extension cannot read disk itself).

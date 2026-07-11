@@ -562,9 +562,12 @@ const App: React.FC = () => {
     );
   }
 
-  // P1-5/P1-6: Export the edited spec to the active project's backlog via
-  // POST /api/files/append-ideas. The registered projectRoot must be set (P1-0).
-  // On success the endpoint returns the generated ID + specPath for confirmation.
+  // P1-5/P1-6/P3-3: Export the edited spec to the active project's backlog.
+  // Since P3-3 this routes through POST /api/pipeline/upsert, whose transport
+  // (HTTP intake adapter vs Phase 1 file handoff) is decided by the resolved
+  // profile at call time — one button for both. The registered projectRoot must
+  // be set (P1-0). On success the route returns mode='file' (ID-XXX + specPath)
+  // or mode='api' (remoteId/remoteUrl) for confirmation.
   async function handleExport() {
     const projectName = activeProject()?.displayName || 'this project';
     const exportIntakeLabel = activeProject()?.profileName === 'example'
@@ -576,7 +579,7 @@ const App: React.FC = () => {
     showModal(
       `Export this specification (${exportPriority} priority) to ${projectName}'s ${exportIntakeLabel}?`,
       'Export',
-      () => {
+      async () => {
         closeModal();
 
         const root = effectiveProjectRoot();
@@ -588,10 +591,31 @@ const App: React.FC = () => {
         setLoading(true);
         clearMessages();
 
+        // P3-3: if the active project has an intake-API adapter, the middleware
+        // needs the named auth secret (Bearer key) to POST to the target. The
+        // profile stores only the NAME (`intakeApi.auth`); the value lives in
+        // chrome.storage.local keyed `wysiwyg:project-secrets:<projectId>`.
+        // Fetch it async and relay it in the body — the middleware attaches it
+        // as a Bearer header and never persists it. For file-handoff profiles
+        // (no intakeApi) `secret` is empty/absent and the middleware ignores it.
+        const activeId = activeProject()?.id;
+        let secret: string | undefined;
+        if (activeId) {
+          try {
+            const storageKey = `wysiwyg:project-secrets:${activeId}`;
+            const result = await chrome.storage.local.get(storageKey);
+            secret = result[storageKey] as string | undefined;
+          } catch {
+            // Storage read failure — proceed without the secret; the
+            // middleware will surface a clear "no secret supplied" error when
+            // intakeApi is present, so the user is never left guessing.
+          }
+        }
+
         chrome.runtime.sendMessage({
           type: 'send-to-server',
           data: {
-            endpoint: '/api/files/append-ideas',
+            endpoint: '/api/pipeline/upsert',
             body: {
               spec: specEditable,
               title: exportTitle.trim() || undefined,
@@ -609,6 +633,9 @@ const App: React.FC = () => {
               registeredProject: activeProject()
                 ? { path: activeProject()!.path, profileName: activeProject()!.profileName }
                 : undefined,
+              // P3-3: relay the resolved intake-API secret (empty for file-handoff
+              // profiles). See the chrome.storage.local read above.
+              secret,
             },
           },
         });

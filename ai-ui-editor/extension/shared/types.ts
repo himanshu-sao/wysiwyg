@@ -218,6 +218,50 @@ export interface AppendIdeasResponse {
   error?: string;
 }
 
+// P3-3: Request to POST /api/pipeline/upsert. Same export payload as
+// AppendIdeasRequest, plus the registered-project reference so the middleware
+// can (a) resolve the profile via ProfileManager and (b) look up the named
+// intakeApi.auth secret in the registry. Mirrors the middleware UpsertRequest
+// (keep the two shared/types.ts files in sync).
+export interface UpsertRequest {
+  spec: string;
+  title?: string;
+  priority: RequirementPriority;
+  architectureHints: string[];
+  testScenarios: string[];
+  edgeCases: string[];
+  element?: ElementContext;
+  instruction: string;
+  projectRoot: string;
+  projectProfile?: string;
+  // P2-2 / P3-3: the active registered project reference for registry-aware
+  // profile resolution + secret lookup by project id.
+  registeredProject?: RegisteredProjectRef;
+  // P3-3: the resolved value of the profile's `intakeApi.auth` name (the named
+  // secret), read by the popup from chrome.storage.local
+  // (key `wysiwyg:project-secrets:<projectId>`). The popup relays it here over
+  // the localhost HTTP connection; the middleware attaches it as a Bearer
+  // header and never persists it. Absent/empty when the profile has no
+  // `intakeApi`. Mirrors the middleware UpsertRequest.secret.
+  secret?: string;
+}
+
+// P3-3: Response from POST /api/pipeline/upsert. Mirrors the middleware
+// UpsertResponse. Discriminated by `mode` — when the profile has intakeApi the
+// route POSTs via PipelineClient (mode='api', remoteId/remoteUrl from the
+// target reply); when intakeApi is absent it falls back to the Phase 1
+// file-handoff path (mode='file', id=generated ID-XXX, specPath on disk). The
+// popup shows whichever confirmation the route returns (P2.5 A5 success banner).
+export interface UpsertResponse {
+  success: boolean;
+  mode: 'api' | 'file';
+  id?: string;          // file mode: generated ID-XXX; api mode: target's id field
+  specPath?: string;    // file mode only: absolute path to spec.md on disk
+  remoteId?: string;   // api mode only: ID extracted from target's reply
+  remoteUrl?: string;  // api mode only: URL extracted from target's reply
+  error?: string;
+}
+
 // P1-3/P1-6: Response from /api/ai/export-requirements. Mirrors the middleware
 // RequirementsExportResponse so the popup can read title/priority/type safely.
 export interface RequirementsExportResponse {

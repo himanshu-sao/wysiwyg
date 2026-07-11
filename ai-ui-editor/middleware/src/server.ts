@@ -5,6 +5,10 @@ import aiRoutes from './routes/ai';
 import filesRoutes from './routes/files';
 import wsRoutes from './routes/ws';
 import gitRoutes from './routes/git';
+// P3-3: pipeline route — the single Export handoff endpoint
+// (POST /api/pipeline/upsert) whose transport (HTTP vs file) is decided by
+// the resolved profile at call time. See routes/pipeline.ts.
+import pipelineRoutes from './routes/pipeline';
 // P1-7 / GAP_AUDIT "Model List Proliferation": validate the configured model
 // against AVAILABLE_MODELS at startup so a typo'd/stale NVIDIA_MODEL env var
 // fails fast with a clear message instead of silently using a wrong model at
@@ -26,6 +30,7 @@ app.register(aiRoutes, { prefix: '/api/ai' });
 app.register(filesRoutes, { prefix: '/api/files' });
 app.register(wsRoutes, { prefix: '/ws' });
 app.register(gitRoutes, { prefix: '/api/git' });
+app.register(pipelineRoutes, { prefix: '/api/pipeline' });
 
 // Health check
 app.get('/health', async () => {
