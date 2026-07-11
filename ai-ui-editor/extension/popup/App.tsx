@@ -205,10 +205,24 @@ const App: React.FC = () => {
               } else {
                 setError(`Export conflict: ${data.error || data.id}`);
               }
+            } else if (data.success && data.commitHash) {
+              // /api/files/write replies with {success, commitHash}. Show a toast
+              // and broadcast edit-applied so the DevTools panel records it.
+              showSuccess('Change applied and committed.');
+              // P1.5-2: broadcast to DevTools panel for edit-history tracking.
+              chrome.runtime.sendMessage({
+                type: 'edit-applied',
+                data: {
+                  element: elementContext?.element,
+                  instruction,
+                  file: pendingWriteRef.current?.file,
+                  diff: undefined, // diff was consumed by applyDiff; not stored
+                },
+              });
             } else if (data.success) {
-              // A9: /api/git/undo replies with {success, message} (no id/specPath).
-              // Surface it so a revert isn't a silent click; the Modal already
-              // gated the destructive intent before the request was sent.
+              // A9: /api/git/undo replies with {success, message} (no id/specPath,
+              // no commitHash). Surface it so a revert isn't a silent click; the
+              // Modal already gated the destructive intent before the request.
               showSuccess(data.message || 'Undid last change.');
             } else {
               // A non-export failure with no id (e.g. a 200/success:false undo).

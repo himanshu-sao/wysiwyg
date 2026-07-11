@@ -294,6 +294,28 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       }
       break;
 
+    // P1.5-2: DevTools panel sends undo-specific to revert a specific edit
+    // via /api/git/undo. Git undo is per-commit (one commit may bundle
+    // multiple edits), so we route to the same endpoint; the entryId is
+    // for the panel's own history tracking (marking the entry undone).
+    case 'undo-specific':
+      fetch(`${MIDDLEWARE_HTTP_URL}/api/git/undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectRoot: 'default' }),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          return response.json();
+        })
+        .then((data) => {
+          chrome.runtime.sendMessage({ type: 'server-response', data });
+        })
+        .catch((error) => {
+          chrome.runtime.sendMessage({ type: 'server-error', error: error.message });
+        });
+      break;
+
     // P1-0: Project Registry message handlers. Each is async; we return true to
     // keep the sendResponse port open and reply from the .then(). The popup
     // drives these (Add project / select active / clear override / list).

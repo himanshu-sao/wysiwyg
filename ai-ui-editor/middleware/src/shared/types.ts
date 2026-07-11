@@ -261,7 +261,10 @@ export interface ExtensionMessage {
     | 'registry-select-active'
     | 'registry-clear-override'
     | 'registry-state'
-    | 'registry-error';
+    | 'registry-error'
+    | 'edit-applied'
+    | 'edit-undone'
+    | 'undo-specific';
   data?: any;
   error?: string;
   mode?: 'css-edit' | 'requirements-export';
