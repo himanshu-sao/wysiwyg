@@ -1,24 +1,26 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-10 (Phase 2 + P2.5 complete — P2-1…P2-4 + A1…A10 all shipped; 297 tests (104 ext + 193 mw); see Audit appendix)
+**Last revised**: 2026-07-11 (P3-3 shipped — all of Phase 3 submit path now landed: P3-1 intake-api descriptor, P3-2 PipelineClient, P3-3 route + popup; 353 tests (104 ext + 249 mw); see Audit appendix)
 
 > **Status:** **Phase 1 (Requirements Bridge), Phase 2 (Project Profiles), and
-> Phase 2.5 (Popup Accessibility/UX Polish) are feature-complete and test-pinned**
-> (297 tests passing — 104 extension + 193 middleware). Phase 1's two former
-> blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and **P1-6 File Export**
-> (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) → P2-2
+> Phase 2.5 (Popup Accessibility/UX Polish) are feature-complete and test-pinned.**
+> **Phase 3 submit path (P3-1 → P3-2 → P3-3) is shipped** — a single Export button
+> delivers the spec either as a file write (Phase 1, when `intakeApi` absent) or as
+> a live HTTP POST (Phase 3, when `intakeApi` present); transport decided by the
+> resolved profile at call time. (353 tests passing — 104 extension + 249 middleware).
+> Phase 1's two former blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and
+> **P1-6 File Export** (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) → P2-2
 > (`ProfileManager`) → P2-3 (profile-selection UI, `e79432c`) → P2-4 (per-profile
 > artifact templates). Phase 2.5 (popup UX/accessibility polish) shipped all 10
 > A-items (A1–A10) across 7 commits on branch `phase-2` (see the Phase 2.5
 > section below for the commit log and patterns established). The Phase 1 + Phase 2
 > + Phase 2.5 sections below are kept as a record of what was specified and what
-> shipped; nothing in them is active. **The next real milestone is Phase 3** (API
-> Bridge — direct live handoff to a target project's pipeline) — see the **Audit
-> appendix** at the end of this file for the live code-vs-roadmap status (formerly
-> a standalone `GAP_AUDIT.md`, now folded in here). The single authoritative
-> narrative (pitch + live status + scope)
-> lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
+> shipped; nothing in them is active. **The next real milestone is P3-4** (additive
+> `statusApi` descriptor + board panel) — see the **Audit appendix** at the end
+> of this file for the live code-vs-roadmap status (formerly a standalone
+> `GAP_AUDIT.md`, now folded in here). The single authoritative narrative (pitch +
+> live status + scope) lives in [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md).
 
 ---
 
@@ -596,25 +598,40 @@ second optional descriptor, sequenced after submit.
 > `tsc --noEmit` clean both pkgs. **P3-2 complete.** Next: P3-3 (route + popup, file
 > fallback) → P3-4 (additive `statusApi`).
 
-### P3-3: Upsert route + popup wiring (file-vs-API decided by the profile)
-- [ ] Add `POST /api/pipeline/upsert` in a new `middleware/src/routes/pipeline.ts`
-      (registered at `/api/pipeline` in `server.ts`, peer of `/api/ai`/`/api/files`/`/api/git`).
-      Resolves the profile via `ProfileManager.resolve()`; if the profile has `intakeApi`,
-      looks up the named secret in the registry and calls `PipelineClient.submitIdea()`;
-      if not, **delegates to the existing `appendRequirements`** file path (Phase 1) — so one
-      endpoint, one button, profile-decided transport.
-- [ ] **Path safety unchanged for the file branch** (still routes through `PathSanitizer` +
-      `GitManager` per Conventions). The API branch performs **no** file/git write.
-- [ ] Type-mirror note: the request type is the existing `AppendIdeasRequest` (already
-      carries the same fields); the upsert *response* (`UpsertResponse`) is new and goes in
-      **both** `shared/types.ts` in lockstep (Conventions' mirror rule).
-- [ ] Popup: `handleExport` is retargeted from `/api/files/append-ideas` to
-      `/api/pipeline/upsert`. The success banner already in place (P2.5 A5) shows whichever
-      confirmation the route returns (file-based "Exported as {id}" *or* API-based "Sent to
-      {project} as {remoteId}"). No new popup surface for submit.
-- [ ] Test: `pipeline.test.ts` — file-fallback when `intakeApi` absent; HTTP POST when
-      present; auth-key lookup from the registry; secret never in the recorded request or
-      error. `api.test.ts` gains +1 route-registration assertion.
+### P3-3: Upsert route + popup wiring (file-vs-API decided by the profile) ✅ shipped (2026-07-11)
+- [x] Add `POST /api/pipeline/upsert` in `middleware/src/routes/pipeline.ts` (registered at
+      `/api/pipeline` in `server.ts`, peer of `/api/ai`/`/api/files`/`/api/git`). Resolves
+      the profile via `ProfileManager.resolve()`; if the profile has `intakeApi`, looks up
+      the named secret (relayed by the popup) and calls `PipelineClient.submitIdea()`; if
+      not, **delegates to the existing `appendRequirements`** file path (Phase 1) — one
+      endpoint, one button, profile-decided transport. Empty/absent secret for an `intakeApi`
+      profile is a clear 400 (configuration error, not an unauthenticated POST). Non-2xx
+      upstream surfaces as 502 (bad-gateway) with the secret redacted.
+- [x] Route factory with explicit fetch + PipelineClient DI (`makePipelineRoutes(deps)`)
+      so `pipeline.test.ts` drives the transport branching through `app.inject` with a
+      fake fetch and a temp-dir-backed file branch — no live network, no real disk outside
+      tmpdir.
+- [x] **Path safety unchanged for the file branch** (still routes through `PathSanitizer` +
+      `GitManager` via delegation to `appendRequirements`). The API branch performs **no**
+      file/git write.
+- [x] Type mirror: `UpsertRequest` + `UpsertResponse` added to **both** `shared/types.ts`
+      in lockstep (Conventions' mirror rule). `UpsertRequest` carries the same export
+      fields as `AppendIdeasRequest` + `registeredProject` + `secret`; `UpsertResponse`
+      is a discriminated `{ success, mode:'api'|'file', id?, specPath?, remoteId?,
+      remoteUrl?, error? }`. Pinned by `typesMirror.test.ts` cross-package sample
+      construction + `UpsertRequest`/`UpsertResponse` in the name-set assertion.
+- [x] Popup: `handleExport` retargeted from `/api/files/append-ideas` to
+      `/api/pipeline/upsert` (`App.tsx:618`). Reads the named auth secret from
+      `chrome.storage.local` (`wysiwyg:project-secrets:<projectId>`) and relays it in
+      the body — the middleware attaches it as `Authorization: Bearer …` and never
+      persists it. The success banner already in place (P2.5 A5) shows whichever
+      confirmation the route returns (file-based "Exported as {id}" *or* API-based "Sent
+      to {project} as {remoteId}"). No new popup surface for submit.
+- [x] Test: `pipeline.test.ts` (+8 tests) — file-fallback delegation with ID + specPath
+      (1), registered-project-root resolution (1), happy-path API POST with Bearer auth
+      and remoteId/url (1), empty-secret 400 before any network call (1), upstream
+      non-2xx → 502 with secret redacted (1), network-failure → 502 with secret
+      redacted (1), Zod validation 400 (1), route-registration assertion (1).
 
 ### P3-4: Status descriptor + pipeline panel (additive, optional) — sequenced after P3-1/P3-2/P3-3
 > Under a **declarative** adapter, a read contract ("fetch the board", "poll status") is a
@@ -813,7 +830,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 
 ### Test results (re-verified 2026-07-10)
 
-> All green. **216 middleware + 104 extension = 320 tests passing.** Both packages
+> All green. **249 middleware + 104 extension = 353 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
 > file list; its count is included in the middleware total.)
@@ -832,6 +849,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
 | Middleware | `PipelineClient.test.ts` *(P3-2)* | 25 | ✅ |
+| Middleware | `pipeline.test.ts` *(P3-3)* | 8 | ✅ |
 | Middleware | `ProfileManager.test.ts` *(P2-2 + P3-1 +6)* | 25 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
 | Middleware | `ProjectProfiles.test.ts` *(P3-1 +17)* | 49 | ✅ |
@@ -841,7 +859,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
 | Middleware | `docSync.test.ts` *(doc-consistency guard)* | 18 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **241** | ✅ |
+| **Middleware Total** | | **249** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.profileSelection.test.ts` *(P2-3)* | 19 | ✅ |
@@ -849,7 +867,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
 | **Extension Total** | | **104** | ✅ |
-| **Grand Total** | | **365** | ✅ |
+| **Grand Total** | | **353** | ✅ |
 
 ### How this audit changed
 
@@ -923,6 +941,22 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
   sentinel (1), happy path (4), error-no-leak (4), SSRF-before-fetch (2). → **216 → 241
   middleware tests (104 extension unchanged → 365 total)**. `tsc --noEmit` clean both pkgs.
   **P3-2 complete.** Next: P3-3 (route + popup, file fallback) → P3-4 (additive `statusApi`).
+	- **2026-07-11 (P3-3):** Pipeline route + popup wiring shipped. `routes/pipeline.ts` is a
+	  route factory (`makePipelineRoutes(deps)`) with explicit fetch + PipelineClient DI,
+	  registered at `/api/pipeline/upsert` in `server.ts`. The route branches on the resolved
+	  profile's `intakeApi`: present → `PipelineClient.submitIdea()` with the secret the popup
+	  relayed from `chrome.storage.local`; absent → delegates to `appendRequirements` (Phase 1
+	  file handoff, unchanged). An empty/absent secret for an intakeApi profile is a clear 400
+	  before any network call; non-2xx upstream is 502 (bad-gateway) with the secret redacted.
+	  `UpsertRequest` + `UpsertResponse` types mirrored in both `shared/types.ts` (pinned by
+	  `typesMirror.test.ts` cross-package sample construction + name-set assertion). Popup
+	  `handleExport` retargeted from `/api/files/append-ideas` to `/api/pipeline/upsert`
+	  (reads the named secret from `chrome.storage.local`, relays in body; middleware attaches
+	  as Bearer, never persists). Tests: `pipeline.test.ts` (+8) — file-fallback delegation
+	  (2), API branch happy-path + secret-in-header (1), empty-secret 400 (1), upstream 401 →
+	  502 redacted (1), network-failure 502 redacted (1), Zod 400 (1), route-registration
+	  assertion (1). → **241 → 249 middleware tests (104 extension unchanged → 353 total)**.
+	  `tsc --noEmit` clean both pkgs. **P3-3 complete.** Next: P3-4 (additive `statusApi`).
 
 ---
 
