@@ -1,14 +1,14 @@
 # wysiwyg TODO
 
 **Created**: 2026-07-04
-**Last revised**: 2026-07-11 (P3-3 shipped — all of Phase 3 submit path now landed: P3-1 intake-api descriptor, P3-2 PipelineClient, P3-3 route + popup; 353 tests (104 ext + 249 mw); see Audit appendix)
+**Last revised**: 2026-07-11 (P3-3 shipped — all of Phase 3 submit path now landed: P3-1 intake-api descriptor, P3-2 PipelineClient, P3-3 route + popup; P3-4 schema+validation+clone guards landed, board panel + route test still TODO; 370 tests (104 ext + 266 mw); see Audit appendix)
 
 > **Status:** **Phase 1 (Requirements Bridge), Phase 2 (Project Profiles), and
 > Phase 2.5 (Popup Accessibility/UX Polish) are feature-complete and test-pinned.**
 > **Phase 3 submit path (P3-1 → P3-2 → P3-3) is shipped** — a single Export button
 > delivers the spec either as a file write (Phase 1, when `intakeApi` absent) or as
 > a live HTTP POST (Phase 3, when `intakeApi` present); transport decided by the
-> resolved profile at call time. (353 tests passing — 104 extension + 249 middleware).
+> resolved profile at call time. (370 tests passing — 104 extension + 266 middleware).
 > Phase 1's two former blockers shipped: **P1-0 Project Registry** (`e9d2b91`) and
 > **P1-6 File Export** (`acb45ab`). Phase 2 shipped P2-1 (profile JSON schema) → P2-2
 > (`ProfileManager`) → P2-3 (profile-selection UI, `e79432c`) → P2-4 (per-profile
@@ -640,9 +640,15 @@ second optional descriptor, sequenced after submit.
 > descriptor** a project *may* provide — so a profile can be submit-only (`intakeApi`) or
 > full-board (`intakeApi` + `statusApi`). The panel renders only when `statusApi` exists.
 > **P3-4 ships only after P3-1/P3-2/P3-3 land and stand alone.**
-- [ ] Extend the profile schema with an **optional** `statusApi` descriptor
-      (a `{ boardPath, itemPath, statusField, pollMs }` analogue to `intakeApi`) validated
-      by `validateProfileEntry()` when present.
+- [x] Extend the profile schema with an **optional** `statusApi` descriptor
+      (a `{ baseUrl, boardPath, itemPath, auth, pollMs, itemFieldMappings }` analogue to
+      `intakeApi`) validated by `validateProfileEntry()` when present — same http(s)/path/auth
+      rules as `intakeApi`, plus `pollMs` (positive int), `itemPath` must contain `{id}`, and
+      `itemFieldMappings` (string `id`/`title`/`status`, optional `url`). `example` ships a demo;
+      `generic` stays without it. `ProfileManager.cloneProfile` deep-clones `statusApi` + its
+      nested `itemFieldMappings`. Tests: `ProjectProfiles.test.ts` (+11 → 60) +
+      `ProfileManager.test.ts` (+6 → 31) — **schema + validation + clone guards landed
+      (2026-07-11); board panel + route test below remain.**
 - [ ] Add `PipelineClient.listBoard()` / `.getItemStatus()` (read side of the same service).
 - [ ] Add `GET /api/pipeline/board` (in `pipeline.ts`) that proxies the board fetch through
       `PipelineClient`; never exposes the target's auth to the extension directly.
@@ -850,16 +856,16 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
 | Middleware | `PipelineClient.test.ts` *(P3-2)* | 25 | ✅ |
 | Middleware | `pipeline.test.ts` *(P3-3)* | 8 | ✅ |
-| Middleware | `ProfileManager.test.ts` *(P2-2 + P3-1 +6)* | 25 | ✅ |
+| Middleware | `ProfileManager.test.ts` *(P2-2 + P3-1 +6 + P3-4 +6)* | 31 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
-| Middleware | `ProjectProfiles.test.ts` *(P3-1 +17)* | 49 | ✅ |
+| Middleware | `ProjectProfiles.test.ts` *(P3-1 +17 + P3-4 +11)* | 60 | ✅ |
 | Middleware | `PromptTemplates.requirements.test.ts` *(P2-4 +5)* | 17 | ✅ |
 | Middleware | `registryPlumbing.test.ts` *(P1-0)* | 9 | ✅ |
 | Middleware | `ResponseParser.test.ts` | 21 | ✅ |
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
 | Middleware | `docSync.test.ts` *(doc-consistency guard)* | 18 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **249** | ✅ |
+| **Middleware Total** | | **266** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.profileSelection.test.ts` *(P2-3)* | 19 | ✅ |
@@ -867,7 +873,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
 | **Extension Total** | | **104** | ✅ |
-| **Grand Total** | | **353** | ✅ |
+| **Grand Total** | | **370** | ✅ |
 
 ### How this audit changed
 
@@ -957,6 +963,27 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 	  502 redacted (1), network-failure 502 redacted (1), Zod 400 (1), route-registration
 	  assertion (1). → **241 → 249 middleware tests (104 extension unchanged → 353 total)**.
 	  `tsc --noEmit` clean both pkgs. **P3-3 complete.** Next: P3-4 (additive `statusApi`).
+	- **2026-07-11 (P3-4 — schema + validation + clone, partial):** The `statusApi` board
+	  adapter is now a first-class optional `ProjectProfile` field, validated and tested
+	  end to end. `ProjectProfile` gains the optional `StatusApi` block (`baseUrl`/
+	  `boardPath`/`itemPath` (must contain `{id}`)/`auth` (a NAME)/`pollMs` (positive int)/
+	  `itemFieldMappings` { string `id`/`title`/`status`, optional `url` }) — a read-side
+	  analogue of `intakeApi` for the board panel. `validateProfileEntry()` reuses the same
+	  http(s)/leading-slash-path/non-empty-`auth` rules as `intakeApi`, plus `pollMs` (positive
+	  integer), `itemPath` `{id}` substitution, and `itemFieldMappings` shape. The `example`
+	  built-in profile (in-code + on-disk `example.json`, kept in lockstep) ships a `statusApi`
+	  demo (`http://localhost:8006`, board `/api/ideas`, item `/api/ideas/{id}`, `pollMs` 5000);
+	  `generic` stays without it (no board tab for unknown projects). `ProfileManager.cloneProfile`
+	  deep-clones `statusApi` + its nested `itemFieldMappings` (same mutation-guard invariant as
+	  `intakeApi`/`intakeLineFormat`). Tests: `ProjectProfiles.test.ts` (+11 → 60 — `statusApi`
+	  validation happy-path + every reject case + lockstep with `example.json`/`generic.json`
+	  + raw-secret backstop) + `ProfileManager.test.ts` (+6 → 31 — `resolve()` surfaces/omits
+	  `statusApi`, rootPath layering preserves the adapter, and clone guards mutate-without-poison
+	  for both the in-code `PROFILES.example` and a JSON-loaded profile). → **249 → 266 middleware
+	  tests (104 extension unchanged → 370 total)**. `tsc --noEmit` clean both pkgs. **P3-4
+	  schema + validation + clone guards landed; board panel + `statusApi.test.ts` route test
+	  remain.** Next: `PipelineClient.listBoard()`/`.getItemStatus()` → `GET /api/pipeline/board`
+	  → the panel + `statusApi.test.ts`.
 
 ---
 

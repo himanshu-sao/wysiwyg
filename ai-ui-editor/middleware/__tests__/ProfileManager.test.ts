@@ -319,6 +319,99 @@ describe('ProfileManager — P2-2 loader', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // P3-4: resolve() surfaces the profile's optional statusApi board adapter,
+  // and cloneProfile deep-clones statusApi + its nested itemFieldMappings so
+  // caller mutation of a resolved profile can't poison the shared PROFILES table
+  // or the JSON-profile cache (same invariant as intakeApi/intakeLineFormat).
+  // -------------------------------------------------------------------------
+  describe('P3-4 statusApi resolve + clone', () => {
+    const customWithStatusApi: ProfileEntry = {
+      name: 'board-profile',
+      urlPatterns: ['localhost:4000'],
+      techStack: ['Next.js'],
+      directories: { frontend: 'app/' },
+      artifactFormat: ['spec.md'],
+      promptContext: 'board project',
+      statusApi: {
+        baseUrl: 'http://localhost:9999',
+        boardPath: '/api/items',
+        itemPath: '/api/items/{id}',
+        auth: 'demoIntakeKey',
+        pollMs: 7000,
+        itemFieldMappings: { id: 'ideaId', title: 'name', status: 'state', url: 'link' },
+      },
+    };
+
+    it('resolve() surfaces statusApi on the built-in example profile', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'example' });
+      expect(profile.statusApi).toBeDefined();
+      expect(profile.statusApi?.boardPath).toBe('/api/ideas');
+      expect(profile.statusApi?.itemPath).toBe('/api/ideas/{id}');
+      expect(profile.statusApi?.auth).toBe('exampleIntakeKey');
+      expect(profile.statusApi?.pollMs).toBe(5000);
+    });
+
+    it('resolve() omits statusApi on the generic profile (no board tab for unknown projects)', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'generic' });
+      expect(profile.statusApi).toBeUndefined();
+    });
+
+    it('resolve() surfaces statusApi on a JSON-loaded profile', async () => {
+      const { readDir, readFile } = fixture({ 'board-profile.json': JSON.stringify(customWithStatusApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const profile = await pm.resolve({ projectProfile: 'board-profile' });
+      expect(profile.statusApi).toBeDefined();
+      expect(profile.statusApi?.baseUrl).toBe('http://localhost:9999');
+      expect(profile.statusApi?.itemFieldMappings.id).toBe('ideaId');
+      expect(profile.statusApi?.itemFieldMappings.url).toBe('link');
+    });
+
+    it('resolve() layers rootPath onto a profile that also carries statusApi', async () => {
+      const { readDir, readFile } = fixture({ 'board-profile.json': JSON.stringify(customWithStatusApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const profile = await pm.resolve({
+        registered: { path: '/Users/x/p', profileName: 'board-profile' },
+      });
+      expect(profile.rootPath).toBe('/Users/x/p');
+      expect(profile.statusApi?.boardPath).toBe('/api/items'); // adapter preserved through the layer
+    });
+
+    it('cloneProfile deep-clones statusApi — mutating it never touches PROFILES', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'example' });
+      expect(profile.statusApi).toBeDefined();
+      // Mutate the resolved profile's adapter scalars + nested mappings map. The
+      // itemFieldMappings clone is the critical guard — without it a caller adding
+      // a mapping key would write through to the shared PROFILES.example entry.
+      profile.statusApi!.boardPath = '/api/tampered';
+      profile.statusApi!.pollMs = 1;
+      profile.statusApi!.itemFieldMappings.id = 'tamperedId';
+      profile.statusApi!.itemFieldMappings.injected = 'x';
+      // The shared PROFILES table must NOT be mutated.
+      expect(PROFILES.example.statusApi?.boardPath).toBe('/api/ideas');
+      expect(PROFILES.example.statusApi?.pollMs).toBe(5000);
+      expect(PROFILES.example.statusApi?.itemFieldMappings.id).toBe('id');
+      expect(PROFILES.example.statusApi?.itemFieldMappings.injected).toBeUndefined();
+    });
+
+    it('cloneProfile deep-clones statusApi — a JSON-loaded profile never poisons its cache', async () => {
+      const { readDir, readFile } = fixture({ 'board-profile.json': JSON.stringify(customWithStatusApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const a = await pm.getTemplate('board-profile');
+      a.statusApi!.boardPath = '/api/tampered';
+      a.statusApi!.itemFieldMappings.id = 'tamperedId';
+      a.statusApi!.itemFieldMappings.injected = 'x';
+      // A second fetch returns an un-mutated copy.
+      const b = await pm.getTemplate('board-profile');
+      expect(b.statusApi?.boardPath).toBe('/api/items');
+      expect(b.statusApi?.itemFieldMappings.id).toBe('ideaId');
+      expect(b.statusApi?.itemFieldMappings.injected).toBeUndefined();
+    });
+  });
+
   describe('real config/profiles/ dir (default constructor)', () => {
     it('loads the shipped example.json + generic.json', async () => {
       const pm = new ProfileManager(); // default dir

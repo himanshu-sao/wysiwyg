@@ -389,6 +389,89 @@ describe('ProjectProfiles', () => {
     });
   });
 
+  // P3-4: statusApi is validated with the same http(s)/path/auth rules as
+  // intakeApi, plus pollMs (positive integer), itemFieldMappings (object with
+  // string id/title/status), and itemPath must contain {id}.
+  describe('validateProfileEntry — P3-4 statusApi validation', () => {
+    // Local base (the `valid` in the sibling validateProfileEntry describe is
+    // out of scope here, same as the P3-1 block): a minimal profile with only
+    // the required fields, used as the spread target for statusApi cases below.
+    const valid = {
+      name: 'demo',
+      urlPatterns: ['localhost:3000'],
+      techStack: ['React'],
+      directories: { frontend: 'src/' },
+      artifactFormat: ['spec.md'],
+      promptContext: 'demo project',
+    };
+    const validStatusApi: Record<string, unknown> = {
+      baseUrl: 'http://localhost:8006',
+      boardPath: '/api/ideas',
+      itemPath: '/api/ideas/{id}',
+      auth: 'exampleIntakeKey',
+      pollMs: 5000,
+      itemFieldMappings: { id: 'id', title: 'title', status: 'status', url: 'url' },
+    };
+
+    it('accepts a profile with a valid statusApi', () => {
+      const r = validateProfileEntry({ ...valid, statusApi: validStatusApi });
+      expect(r.valid).toBe(true);
+    });
+
+    it('rejects statusApi that is not an object', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: 'nope' as any }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: [] as any }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: null as any }).valid).toBe(false);
+    });
+
+    it('rejects a non-http(s) / invalid baseUrl', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, baseUrl: 'file:///etc' } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, baseUrl: '' } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, baseUrl: 'not-a-url' } }).valid).toBe(false);
+    });
+
+    it('rejects a boardPath that does not start with "/"', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, boardPath: 'api/ideas' } }).valid).toBe(false);
+    });
+
+    it('rejects an itemPath that does not contain "{id}"', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemPath: '/api/ideas' } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemPath: '/api/ideas/:id' } }).valid).toBe(false);
+    });
+
+    it('rejects an empty auth name', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, auth: '' } }).valid).toBe(false);
+    });
+
+    it('rejects pollMs that is not a positive integer', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, pollMs: 0 } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, pollMs: -5000 } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, pollMs: 1000.5 } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, pollMs: '5000' as any } }).valid).toBe(false);
+    });
+
+    it('rejects itemFieldMappings that is not an object', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: 'nope' as any } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: [] as any } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: null as any } }).valid).toBe(false);
+    });
+
+    it('rejects itemFieldMappings with missing/empty required fields (id, title, status)', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { title: 'title', status: 'status' } } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { id: '', title: 'title', status: 'status' } } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { id: 'id', title: '', status: 'status' } } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { id: 'id', title: 'title', status: '' } } }).valid).toBe(false);
+    });
+
+    it('accepts itemFieldMappings without an optional url field', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { id: 'id', title: 'title', status: 'status' } } }).valid).toBe(true);
+    });
+
+    it('rejects itemFieldMappings.url that is present but not a string', () => {
+      expect(validateProfileEntry({ ...valid, statusApi: { ...validStatusApi, itemFieldMappings: { id: 'id', title: 'title', status: 'status', url: 42 as any } } }).valid).toBe(false);
+    });
+  });
+
   describe('validateProfileEntry — P3-1 raw-secret backstop', () => {
     // The profile JSON is committed to the repo; a raw secret must never ride
     // it in. validateProfileEntry rejects the conventional raw-secret field
@@ -457,8 +540,9 @@ describe('ProjectProfiles', () => {
       expect(json.intakeFile).toBe(code.intakeFile);
       expect(json.agents).toEqual(code.agents);
       expect(json.promptContext).toBe(code.promptContext);
-      // P3-1: the shipped example.json carries an intakeApi block (Phase 3 HTTP
-      // handoff demo) and it must stay in lockstep with the in-code profile.
+      // P3-1 / P3-4: the shipped example.json carries intakeApi + statusApi blocks
+      // (Phase 3 HTTP handoff + board demos) and they must stay in lockstep with the
+      // in-code profile.
       expect(json.intakeApi).toEqual(code.intakeApi);
       expect(json.intakeApi).toEqual({
         baseUrl: 'http://localhost:8006',
@@ -473,6 +557,15 @@ describe('ProjectProfiles', () => {
           testScenarios: '{testScenarios}',
           edgeCases: '{edgeCases}',
         },
+      });
+      expect(json.statusApi).toEqual(code.statusApi);
+      expect(json.statusApi).toEqual({
+        baseUrl: 'http://localhost:8006',
+        boardPath: '/api/ideas',
+        itemPath: '/api/ideas/{id}',
+        auth: 'exampleIntakeKey',
+        pollMs: 5000,
+        itemFieldMappings: { id: 'id', title: 'title', status: 'status', url: 'url' },
       });
       // `auth` is a NAME, never a raw secret — no conventional secret fields.
       for (const secretField of ['apiKey', 'api_key', 'token', 'secret']) {
@@ -490,10 +583,13 @@ describe('ProjectProfiles', () => {
       expect(json.artifactFormat).toEqual(code.artifactFormat);
       expect(json.intakeFile).toBe(code.intakeFile);
       expect(json.promptContext).toBe(code.promptContext);
-      // P3-1: generic has NO intakeApi — unknown projects keep the Phase 1
-      // file-handoff default. Both the JSON and the in-code profile must agree.
+      // P3-1 / P3-4: generic has NO intakeApi or statusApi — unknown projects keep
+      // the Phase 1 file-handoff default and have no board tab. Both the JSON and
+      // the in-code profile must agree.
       expect(json.intakeApi).toBeUndefined();
       expect(code.intakeApi).toBeUndefined();
+      expect(json.statusApi).toBeUndefined();
+      expect(code.statusApi).toBeUndefined();
     });
   });
 });

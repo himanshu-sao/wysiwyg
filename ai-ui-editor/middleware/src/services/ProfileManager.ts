@@ -242,6 +242,11 @@ function cloneProfile(p: ProjectProfile): ProjectProfile {
     ...(p.intakeApi
       ? { intakeApi: { ...p.intakeApi, bodyTemplate: { ...p.intakeApi.bodyTemplate } } }
       : {}),
+    // Phase 3-4: deep-clone statusApi + its nested itemFieldMappings record (same
+    // safety reasoning as intakeApi above — mutation guard for the shared table).
+    ...(p.statusApi
+      ? { statusApi: { ...p.statusApi, itemFieldMappings: { ...p.statusApi.itemFieldMappings } } }
+      : {}),
   };
 }
 

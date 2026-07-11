@@ -27,5 +27,18 @@
       "testScenarios": "{testScenarios}",
       "edgeCases": "{edgeCases}"
     }
+  },
+  "statusApi": {
+    "baseUrl": "http://localhost:8006",
+    "boardPath": "/api/ideas",
+    "itemPath": "/api/ideas/{id}",
+    "auth": "exampleIntakeKey",
+    "pollMs": 5000,
+    "itemFieldMappings": {
+      "id": "id",
+      "title": "title",
+      "status": "status",
+      "url": "url"
+    }
   }
 }

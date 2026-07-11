@@ -55,6 +55,30 @@ export interface IntakeApi {
   bodyTemplate: Record<string, string>;    // { targetField: "{wysiwygField}" } — flat map
 }
 
+/**
+ * Phase 3-4: an optional status/board adapter — additive, shipped after P3-3.
+ * Present ⇒ P3-4's PipelinePanel shows a live board of the target's pipeline
+ * items; PipelineClient uses `listBoard()` / `getItemStatus()` to fetch it via
+ * `GET boardPath` / `GET itemPath` (with `{id}` substituted). Absent ⇒ the board
+ * tab is hidden. Same auth pattern as `intakeApi`: `auth` names a registry secret,
+ * never a raw key; the secret is injected as Bearer at call time and redacted
+ * from errors. `pollMs` drives the board-refresh interval in the panel (polling,
+ * not real-time sync).
+ */
+export interface StatusApi {
+  baseUrl: string;                         // http(s):// only — PipelineClient rejects other schemes
+  boardPath: string;                       // e.g. "/api/ideas" — GET for list
+  itemPath: string;                        // e.g. "/api/ideas/{id}" — {id} substituted at runtime
+  auth: string;                            // NAMES a registry key, never a raw secret
+  pollMs: number;                          // Polling interval in milliseconds
+  itemFieldMappings: {
+    id: string;                            // JSON field holding the item ID, e.g. "id" or "ideaId"
+    title: string;                         // e.g. "title" or "name"
+    status: string;                        // e.g. "status" or "state"
+    url?: string;                          // e.g. "url" or "link" (optional)
+  };
+}
+
 export interface ProjectProfile {
   name: string;
   urlPatterns: string[];           // Auto-detect by URL match
@@ -99,6 +123,13 @@ export interface ProjectProfile {
                                           // Phase 1 file handoff (appendRequirements).
                                           // Serialized to config/profiles/*.json (it
                                           // is allowed on disk, unlike rootPath). `auth`
+                                          // names a registry secret — never a raw key.
+
+  statusApi?: StatusApi;                   // Phase 3-4: optional status/board adapter.
+                                          // Present ⇒ the board panel polls the target's
+                                          // item list via PipelineClient.listBoard()/
+                                          // getItemStatus() and renders the board tab.
+                                          // Serialized to config/profiles/*.json. `auth`
                                           // names a registry secret — never a raw key.
 }
 
@@ -159,6 +190,24 @@ export const PROFILES: Record<string, ProjectProfile> = {
         architectureHints: '{architectureHints}',
         testScenarios: '{testScenarios}',
         edgeCases: '{edgeCases}',
+      },
+    },
+    // P3-4: example ships a `statusApi` adapter so the built-in demo shows the
+    // board panel (polls the same demo target's GET /api/ideas for the item list).
+    // `itemPath` uses {id} substitution; `itemFieldMappings` tells PipelineClient
+    // how to extract id/title/status/url from the target's JSON response.
+    // `generic` stays WITHOUT statusApi so unknown projects have no board tab.
+    statusApi: {
+      baseUrl: 'http://localhost:8006',
+      boardPath: '/api/ideas',
+      itemPath: '/api/ideas/{id}',
+      auth: 'exampleIntakeKey',
+      pollMs: 5000,
+      itemFieldMappings: {
+        id: 'id',
+        title: 'title',
+        status: 'status',
+        url: 'url',
       },
     },
   },
@@ -320,6 +369,9 @@ export function validateProfileEntry(raw: unknown): ProfileValidationResult {
   // intakeApi (Phase 3): optional HTTP intake adapter. Validated when present so a
   // malformed descriptor can't reach PipelineClient. `auth` is a NAME of a registry
   // secret, never the secret itself — the raw-secret rejection below is the backstop.
+  // P3-4: statusApi (optional board adapter) is validated with the same http(s)/path
+  // rules; its `itemFieldMappings` must be an object with string id/title/status at
+  // minimum; `pollMs` must be a positive integer; `itemPath` must contain `{id}`.
   if (p.intakeApi !== undefined) {
     if (typeof p.intakeApi !== 'object' || p.intakeApi === null) {
       return { valid: false, error: '"intakeApi" must be an object' };
@@ -354,6 +406,57 @@ export function validateProfileEntry(raw: unknown): ProfileValidationResult {
       if (typeof v !== 'string') {
         return { valid: false, error: '"intakeApi.bodyTemplate" must be an object of string values' };
       }
+    }
+  }
+
+  // statusApi (Phase 3-4): optional board/status adapter. Validated with the same
+  // http(s)/path/auth rules as intakeApi. `itemFieldMappings` must be an object with
+  // string-valued id/title/status at minimum; `url` is optional. `pollMs` must be a
+  // positive integer. `itemPath` must contain `{id}` for runtime substitution.
+  if (p.statusApi !== undefined) {
+    if (typeof p.statusApi !== 'object' || p.statusApi === null) {
+      return { valid: false, error: '"statusApi" must be an object' };
+    }
+    const sapi = p.statusApi as Record<string, unknown>;
+    if (typeof sapi.baseUrl !== 'string' || (sapi.baseUrl as string).length === 0) {
+      return { valid: false, error: '"statusApi.baseUrl" must be a non-empty string' };
+    }
+    let sUrl: URL;
+    try {
+      sUrl = new URL(sapi.baseUrl as string);
+    } catch {
+      return { valid: false, error: '"statusApi.baseUrl" must be an http(s) URL' };
+    }
+    if (sUrl.protocol !== 'http:' && sUrl.protocol !== 'https:') {
+      return { valid: false, error: '"statusApi.baseUrl" must be an http(s) URL' };
+    }
+    if (typeof sapi.boardPath !== 'string' || !(sapi.boardPath as string).startsWith('/')) {
+      return { valid: false, error: '"statusApi.boardPath" must be a path starting with "/"' };
+    }
+    if (typeof sapi.itemPath !== 'string' || !(sapi.itemPath as string).includes('{id}')) {
+      return { valid: false, error: '"statusApi.itemPath" must contain "{id}"' };
+    }
+    if (typeof sapi.auth !== 'string' || (sapi.auth as string).length === 0) {
+      return { valid: false, error: '"statusApi.auth" must be a non-empty string' };
+    }
+    if (typeof sapi.pollMs !== 'number' || !Number.isFinite(sapi.pollMs) || (sapi.pollMs as number) <= 0 || !Number.isInteger(sapi.pollMs)) {
+      return { valid: false, error: '"statusApi.pollMs" must be a positive integer' };
+    }
+    if (typeof sapi.itemFieldMappings !== 'object' || sapi.itemFieldMappings === null || Array.isArray(sapi.itemFieldMappings)) {
+      return { valid: false, error: '"statusApi.itemFieldMappings" must be an object' };
+    }
+    const ifm = sapi.itemFieldMappings as Record<string, unknown>;
+    if (typeof ifm.id !== 'string' || (ifm.id as string).length === 0) {
+      return { valid: false, error: '"statusApi.itemFieldMappings.id" must be a non-empty string' };
+    }
+    if (typeof ifm.title !== 'string' || (ifm.title as string).length === 0) {
+      return { valid: false, error: '"statusApi.itemFieldMappings.title" must be a non-empty string' };
+    }
+    if (typeof ifm.status !== 'string' || (ifm.status as string).length === 0) {
+      return { valid: false, error: '"statusApi.itemFieldMappings.status" must be a non-empty string' };
+    }
+    if (ifm.url !== undefined && typeof ifm.url !== 'string') {
+      return { valid: false, error: '"statusApi.itemFieldMappings.url" must be a string' };
     }
   }
 
