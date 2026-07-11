@@ -235,6 +235,90 @@ describe('ProfileManager — P2-2 loader', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // P3-1: resolve() surfaces the profile's optional intakeApi adapter (so a
+  // future route can pick the Phase 3 HTTP path vs the Phase 1 file path at call
+  // time), and cloneProfile deep-clones intakeApi + its nested bodyTemplate so
+  // caller mutation of a resolved profile can't poison the shared PROFILES table
+  // or the JSON-profile cache (same invariant as intakeLineFormat).
+  // -------------------------------------------------------------------------
+  describe('P3-1 intakeApi resolve + clone', () => {
+    const customWithApi: ProfileEntry = {
+      name: 'api-profile',
+      urlPatterns: ['localhost:4000'],
+      techStack: ['Next.js'],
+      directories: { frontend: 'app/' },
+      artifactFormat: ['spec.md'],
+      promptContext: 'api project',
+      intakeApi: {
+        baseUrl: 'http://localhost:9999',
+        upsertPath: '/api/ideas',
+        method: 'POST',
+        auth: 'demoIntakeKey',
+        bodyTemplate: { title: '{title}', spec: '{spec}' },
+      },
+    };
+
+    it('resolve() surfaces intakeApi on the built-in example profile', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'example' });
+      expect(profile.intakeApi).toBeDefined();
+      expect(profile.intakeApi?.upsertPath).toBe('/api/ideas');
+      expect(profile.intakeApi?.auth).toBe('exampleIntakeKey');
+    });
+
+    it('resolve() omits intakeApi on the generic profile (file-handoff default)', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'generic' });
+      expect(profile.intakeApi).toBeUndefined();
+    });
+
+    it('resolve() surfaces intakeApi on a JSON-loaded profile', async () => {
+      const { readDir, readFile } = fixture({ 'api-profile.json': JSON.stringify(customWithApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const profile = await pm.resolve({ projectProfile: 'api-profile' });
+      expect(profile.intakeApi).toBeDefined();
+      expect(profile.intakeApi?.baseUrl).toBe('http://localhost:9999');
+      expect(profile.intakeApi?.bodyTemplate.title).toBe('{title}');
+    });
+
+    it('resolve() layers rootPath onto a profile that also carries intakeApi', async () => {
+      const { readDir, readFile } = fixture({ 'api-profile.json': JSON.stringify(customWithApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const profile = await pm.resolve({
+        registered: { path: '/Users/x/p', profileName: 'api-profile' },
+      });
+      expect(profile.rootPath).toBe('/Users/x/p');
+      expect(profile.intakeApi?.upsertPath).toBe('/api/ideas'); // adapter preserved through the layer
+    });
+
+    it('cloneProfile deep-clones intakeApi — mutating it never touches PROFILES', async () => {
+      const pm = new ProfileManager({ readDir: async () => [], readFile: async () => '' });
+      const profile = await pm.resolve({ projectProfile: 'example' });
+      expect(profile.intakeApi).toBeDefined();
+      // Mutate the resolved profile's adapter body + nested map.
+      profile.intakeApi!.upsertPath = '/api/tampered';
+      profile.intakeApi!.bodyTemplate.title = '{tampered}';
+      profile.intakeApi!.bodyTemplate.injected = '{x}';
+      // The shared PROFILES table must NOT be mutated.
+      expect(PROFILES.example.intakeApi?.upsertPath).toBe('/api/ideas');
+      expect(PROFILES.example.intakeApi?.bodyTemplate.title).toBe('{title}');
+      expect(PROFILES.example.intakeApi?.bodyTemplate.injected).toBeUndefined();
+    });
+
+    it('cloneProfile deep-clones intakeApi — a JSON-loaded profile never poisons its cache', async () => {
+      const { readDir, readFile } = fixture({ 'api-profile.json': JSON.stringify(customWithApi) });
+      const pm = new ProfileManager({ readDir, readFile });
+      const a = await pm.getTemplate('api-profile');
+      a.intakeApi!.bodyTemplate.title = '{tampered}';
+      a.intakeApi!.upsertPath = '/api/tampered';
+      // A second fetch returns an un-mutated copy.
+      const b = await pm.getTemplate('api-profile');
+      expect(b.intakeApi?.upsertPath).toBe('/api/ideas');
+      expect(b.intakeApi?.bodyTemplate.title).toBe('{title}');
+    });
+  });
+
   describe('real config/profiles/ dir (default constructor)', () => {
     it('loads the shipped example.json + generic.json', async () => {
       const pm = new ProfileManager(); // default dir

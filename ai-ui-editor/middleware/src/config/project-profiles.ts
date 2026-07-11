@@ -34,6 +34,27 @@ export interface ArtifactTemplate {
   sections: string[];   // e.g. ['Overview', 'Requirements', 'Edge Cases', 'Acceptance Criteria']
 }
 
+/**
+ * Phase 3: an optional HTTP intake adapter. Present ⇒ a future `PipelineClient`
+ * (P3-2) POSTs the export to `baseUrl + upsertPath` with the body built from
+ * `bodyTemplate` and the named `auth` as an `Authorization: Bearer …` header.
+ * Absent ⇒ Phase 1 file handoff (`appendRequirements`), unchanged. Which path
+ * runs is decided by the resolved profile at call time (P3-3) — wysiwyg carries
+ * no knowledge of any specific target; the profile *is* the adapter.
+ *
+ * `auth` is a NAME of a key stored in the extension registry (`chrome.storage.local`,
+ * key `wysiwyg:project-secrets:<projectId>`) — never a raw secret. The profile
+ * JSON is on disk and committed, so `validateProfileEntry()` rejects a raw
+ * `apiKey`/`api_key`/`token`/`secret` field at the load boundary.
+ */
+export interface IntakeApi {
+  baseUrl: string;                          // http(s):// only — PipelineClient rejects other schemes
+  upsertPath: string;                      // e.g. "/api/ideas"
+  method: 'POST';                          // POST only for Phase 3
+  auth: string;                            // NAMES a registry key, never a raw secret
+  bodyTemplate: Record<string, string>;    // { targetField: "{wysiwygField}" } — flat map
+}
+
 export interface ProjectProfile {
   name: string;
   urlPatterns: string[];           // Auto-detect by URL match
@@ -70,6 +91,15 @@ export interface ProjectProfile {
   artifactTemplates?: ArtifactTemplate[]; // Per-artifact section lists P2-4 uses to
                                           // drive the prompt + spec.md scaffold.
                                           // Matches entries in `artifactFormat`.
+
+  intakeApi?: IntakeApi;                   // Phase 3: HTTP intake adapter. Present ⇒
+                                          // P3-2's PipelineClient POSTs the export to
+                                          // baseUrl+upsertPath with the mapped body +
+                                          // the named auth as a bearer header; absent ⇒
+                                          // Phase 1 file handoff (appendRequirements).
+                                          // Serialized to config/profiles/*.json (it
+                                          // is allowed on disk, unlike rootPath). `auth`
+                                          // names a registry secret — never a raw key.
 }
 
 /**
@@ -111,6 +141,26 @@ export const PROFILES: Record<string, ProjectProfile> = {
         sections: ['Unit', 'Integration', 'E2E'],
       },
     ],
+    // P3-1: example ships an `intakeApi` adapter so the built-in demo shows the
+    // Phase 3 HTTP handoff shape (mirrors how it already shows the file-intake
+    // shape via intakeFile/intakeLineFormat). The endpoint is a placeholder —
+    // wysiwyg knows no real target; `auth` names a registry secret, never a raw
+    // key. `generic` stays WITHOUT intakeApi so unknown projects keep the Phase 1
+    // file-handoff default.
+    intakeApi: {
+      baseUrl: 'http://localhost:8006',
+      upsertPath: '/api/ideas',
+      method: 'POST',
+      auth: 'exampleIntakeKey',
+      bodyTemplate: {
+        title: '{title}',
+        priority: '{priority}',
+        spec: '{spec}',
+        architectureHints: '{architectureHints}',
+        testScenarios: '{testScenarios}',
+        edgeCases: '{edgeCases}',
+      },
+    },
   },
   generic: {
     name: 'generic',
@@ -264,6 +314,58 @@ export function validateProfileEntry(raw: unknown): ProfileValidationResult {
       if (!Array.isArray(a.sections) || !(a.sections as unknown[]).every((s) => typeof s === 'string')) {
         return { valid: false, error: '"artifactTemplates[].sections" must be an array of strings' };
       }
+    }
+  }
+
+  // intakeApi (Phase 3): optional HTTP intake adapter. Validated when present so a
+  // malformed descriptor can't reach PipelineClient. `auth` is a NAME of a registry
+  // secret, never the secret itself — the raw-secret rejection below is the backstop.
+  if (p.intakeApi !== undefined) {
+    if (typeof p.intakeApi !== 'object' || p.intakeApi === null) {
+      return { valid: false, error: '"intakeApi" must be an object' };
+    }
+    const api = p.intakeApi as Record<string, unknown>;
+    if (typeof api.baseUrl !== 'string' || (api.baseUrl as string).length === 0) {
+      return { valid: false, error: '"intakeApi.baseUrl" must be a non-empty string' };
+    }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(api.baseUrl as string);
+    } catch {
+      return { valid: false, error: '"intakeApi.baseUrl" must be an http(s) URL' };
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return { valid: false, error: '"intakeApi.baseUrl" must be an http(s) URL' };
+    }
+    if (typeof api.upsertPath !== 'string' || !(api.upsertPath as string).startsWith('/')) {
+      return { valid: false, error: '"intakeApi.upsertPath" must be a path starting with "/"' };
+    }
+    if (api.method !== 'POST') {
+      return { valid: false, error: '"intakeApi.method" must be "POST"' };
+    }
+    if (typeof api.auth !== 'string' || (api.auth as string).length === 0) {
+      return { valid: false, error: '"intakeApi.auth" must be a non-empty string' };
+    }
+    if (typeof api.bodyTemplate !== 'object' || api.bodyTemplate === null || Array.isArray(api.bodyTemplate)) {
+      return { valid: false, error: '"intakeApi.bodyTemplate" must be an object of string values' };
+    }
+    const bt = api.bodyTemplate as Record<string, unknown>;
+    for (const v of Object.values(bt)) {
+      if (typeof v !== 'string') {
+        return { valid: false, error: '"intakeApi.bodyTemplate" must be an object of string values' };
+      }
+    }
+  }
+
+  // Raw-secret backstop: a committed profile must name the secret via intakeApi.auth,
+  // never carry the secret itself. Reject the conventional raw-secret field names so a
+  // pasted-in secret can't silently ride a profile file into the repo.
+  for (const secretField of ['apiKey', 'api_key', 'token', 'secret']) {
+    if (p[secretField] !== undefined) {
+      return {
+        valid: false,
+        error: `"${secretField}" must not appear in a profile — name the auth via intakeApi.auth and store the secret in the registry`,
+      };
     }
   }
 

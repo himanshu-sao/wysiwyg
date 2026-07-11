@@ -13,5 +13,19 @@
     { "name": "spec.md", "sections": ["Overview", "Requirements", "Scope", "Edge Cases", "Constraints", "PII-Secret Handling", "Acceptance Criteria"] },
     { "name": "architecture.md", "sections": ["Context", "Decision", "Alternatives", "Consequences"] },
     { "name": "tests.md", "sections": ["Unit", "Integration", "E2E"] }
-  ]
+  ],
+  "intakeApi": {
+    "baseUrl": "http://localhost:8006",
+    "upsertPath": "/api/ideas",
+    "method": "POST",
+    "auth": "exampleIntakeKey",
+    "bodyTemplate": {
+      "title": "{title}",
+      "priority": "{priority}",
+      "spec": "{spec}",
+      "architectureHints": "{architectureHints}",
+      "testScenarios": "{testScenarios}",
+      "edgeCases": "{edgeCases}"
+    }
+  }
 }

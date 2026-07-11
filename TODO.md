@@ -476,30 +476,156 @@ Findings below are anchored to the skill's named rules; severities are the skill
 
 ---
 
-## Phase 3: API Bridge (Full Integration)
+## Phase 3: API Bridge (live handoff)
 
-**Goal**: Direct, live handoff from wysiwyg to a target project's pipeline. This is where
-coupling to the target project's *internal* API begins — Phase 1 deliberately avoids it
-(file handoff only).
+> **Reframed 2026-07-11** (from the Phase 3 design discussion): the original Phase 3
+> wording was **tightly coupled to one "target project"** — the old P3-1 literally said
+> "add `POST /api/ideas/upsert` *in the target project*." That violates the core guardrail:
+> wysiwyg is a **multi-project tool** and the built-in `example` profile is a demo, **not
+> the purpose** (see the `antikythera-is-example` memory). Phase 3 must not bake in any one
+> target's API. The design below is **decoupled**: wysiwyg knows nothing about a specific
+> target — the registered project's **profile** carries a declarative intake *adapter
+> descriptor*, and wysiwyg's `PipelineClient` is a generic HTTP caller configured entirely
+> from that descriptor. This mirrors how P1-0 already decoupled `projectRoot` (a
+> registered-per-profile value rather than a hardcoded `window.location.origin`): the
+> file-based `intakeFile`/`intakeLineFormat` fields describe file intake; the new `intakeApi`
+> field is their HTTP analogue.
 
-### P3-1: Target Project API Endpoint
-- [ ] Add `POST /api/ideas/upsert` **in the target project** (uses its own internal API;
-      **never** write internal state files directly — follow the target project's own conventions).
-- [ ] Accepts: `{ spec, architectureHints, testScenarios, title, priority }`.
-- [ ] Creates a new item in the target project's pipeline at intake stage.
+**Goal**: A single Export button that delivers the spec either as a file write (Phase 1,
+when no API adapter is configured) **or** as a live HTTP POST to the active project's own
+intake API (Phase 3, when `intakeApi` is present on the resolved profile). Which path runs is
+**decided by the profile, at call time** — the popup, the button, and the request payload
+stay identical. read / board / sync (the former P3-3/P3-4) become **additive** behind a
+second optional descriptor, sequenced after submit.
 
-### P3-2: wysiwyg → Target Project HTTP Client
-- [ ] Add a generic `pipelineClient` in `middleware/src/services/`.
-- [ ] POST to the target project's upsert endpoint.
-- [ ] Handle auth (API key or local-only).
+**Design decisions (locked from the 2026-07-11 design discussion):**
+- **Declarative adapter (Option A), not per-project code adapters.** The profile carries a
+  flat `{ targetField: "{wysiwygField}" }` body mapping + endpoint path + auth-name. No
+  project-specific code ships inside wysiwyg. Code-adapter plugins (custom signing,
+  retries, multi-step intake) are **explicitly deferred** to a later "custom adapter"
+  escape hatch — a Phase 3+ signal, not a Phase 3 blocker.
+- **Auth is named, never embedded.** The profile stores `"auth": "bearerKey"` (a *name*);
+  the actual secret lives in the **registry** alongside the registered project entry
+  (`chrome.storage.local`, keyed `wysiwyg:project-secrets:<projectId>`) — **never** in the
+  profile JSON on disk (committed secrets = bad). `validateProfileEntry()` (P2-1) is
+  extended to **reject** a raw `apiKey`/`token` string field should one ever appear in a
+  profile.
+- **`PipelineClient` SSRF/auth rules.** Reject any `baseUrl` whose scheme isn't `http` or
+  `https` (no `file:`/`data:`/`ftp:`). **localhost / 127.0.0.1 / 0.0.0.0 are allowed** —
+  the target typically runs on the user's own machine; forbidding loopback would break the
+  realistic case. An optional `allowedHosts` list may restrict later but is **not required**
+  for Phase 3 (permissive-by-default is consistent with P1-0, which already trusts the
+  registered disk path). The auth key is injected as a header at call time and is
+  **redacted from any thrown error, request log, and commit message**. The trust boundary
+  is: *the user registered this project themselves* — the same trust extended to the
+  registered disk path for file writes.
+- **Shared types already carry the payload.** `RequirementsExportResponse` /
+  `AppendIdeasRequest` already expose `spec, architectureHints, testScenarios, edgeCases,
+  title, priority` (mirrored in both `shared/types.ts`). Phase 3 reuses these as the
+  `bodyTemplate`'s available `{wysiwygField}` tokens — no new request/response type for the
+  upsert *fields* themselves (only a new `UpsertResponse` for the target's reply).
 
-### P3-3: Chrome Extension Pipeline View
-- [ ] New panel showing the target project's Kanban board (fetch from its API).
-- [ ] Click item → see full spec + artifacts.
+### P3-1: Intake adapter descriptor on the profile ✅ shipped (2026-07-11)
+- [x] Extend `ProjectProfile` (`config/project-profiles.ts` + the P2-1 schema) with an
+      **optional** `intakeApi` field — present ⇒ Phase 3 HTTP handoff; absent ⇒ Phase 1
+      file handoff (`appendRequirements`, unchanged). Keep `intakeFile`/`intakeLineFormat`
+      as the unchanged file-handoff path.
+- [x] `intakeApi` shape:
+      ```ts
+      interface IntakeApi {
+        baseUrl: string;            // http(s):// only (PipelineClient rejects other schemes)
+        upsertPath: string;         // e.g. "/api/ideas"
+        method: 'POST';             // POST only for Phase 3
+        auth: string;               // NAMES a key stored in the registry, never a raw secret
+        bodyTemplate: Record<string, string>;  // { targetField: "{wysiwygField}" }
+      }
+      ```
+- [x] Extend `validateProfileEntry()` (P2-1) to validate `intakeApi` when present (scheme
+      check, required `upsertPath`/`auth`/`bodyTemplate`) and to **reject** any raw
+      `apiKey`/`api_key`/`token`/`secret` string field. Pure (no fs); covered by a
+      profile-schema guard test (`ProjectProfiles.test.ts` +17).
+- [x] Add an `intakeApi` block to the `example.json` built-in profile (pointing at the demo
+      target's intake endpoint `http://localhost:8006/api/ideas` with placeholder auth-name
+      `exampleIntakeKey`) so the built-in demo shows the Phase 3 shape just as it already
+      shows the file-intake shape. `generic.json` stays without `intakeApi` (file-handoff
+      fallback remains the default for unknown projects). In-code `PROFILES.example` and
+      on-disk `example.json` kept in lockstep (pinned by the shipped-JSON test).
+- [x] Test: `ProfileManager.test.ts` (+6) asserts `resolve()` surfaces `intakeApi` when
+      present (built-in `example` + JSON-loaded profile + registered-override layering) and
+      omits it when absent (`generic`); `cloneProfile` deep-clones `intakeApi.bodyTemplate`
+      so caller mutation can't poison `PROFILES` or the JSON cache. `ProjectProfiles.test.ts`
+      (+17) covers each malformed `intakeApi` subfield rejection + the raw-secret backstop
+      (`apiKey`/`api_key`/`token`/`secret`) + the shipped-JSON lockstep for `intakeApi`.
+      193 → 216 mw tests (104 ext unchanged → **320 total**). `tsc --noEmit` clean both pkgs.
 
-### P3-4: Status Sync
-- [ ] After the target project processes the item, update wysiwyg UI.
-- [ ] Show: "In Progress → Review → Complete".
+### P3-2: `PipelineClient` service (the generic caller)
+- [ ] Add `middleware/src/services/PipelineClient.ts` following the one-service-per-file
+      pattern already used by `GitManager`/`PathSanitizer`/`ProfileManager`.
+- [ ] Single method: `submitIdea(profile, idea, secret)` — builds the request body from
+      `bodyTemplate` (substituting `{wysiwygField}` tokens from `idea`), injects the named
+      auth value as an `Authorization: Bearer …` header, and POSTs to
+      `baseUrl + upsertPath`. Returns the target's reply (best-effort `{ id, url, status }`).
+- [ ] **SSRF/auth rules from the design are enforced here, not at the route:** reject
+      non-http(s) `baseUrl`; allow `http(s)://(localhost|127.0.0.1|0.0.0.0)`; redact the auth
+      value from any thrown `Error` / request log before surfacing. No auth value is ever
+      written to a git commit message or a stored log line.
+- [ ] **Pure + injectable:** no hardcoded target URLs, no project-specific branches.
+      Constructable with a fetch adapter (mirror the `projectRegistry.ts` dependency-injection
+      pattern) so `PipelineClient.test.ts` runs against an in-memory `fetch` stub — no live
+      network in unit tests.
+- [ ] Test: `PipelineClient.test.ts` — body mapping, scheme rejection, localhost allowed,
+      secret redaction in errors, 4xx/5xx surfacing (without leaking the key), and the
+      no-`intakeApi` branch returning a sentinel so the route falls back to file handoff.
+
+### P3-3: Upsert route + popup wiring (file-vs-API decided by the profile)
+- [ ] Add `POST /api/pipeline/upsert` in a new `middleware/src/routes/pipeline.ts`
+      (registered at `/api/pipeline` in `server.ts`, peer of `/api/ai`/`/api/files`/`/api/git`).
+      Resolves the profile via `ProfileManager.resolve()`; if the profile has `intakeApi`,
+      looks up the named secret in the registry and calls `PipelineClient.submitIdea()`;
+      if not, **delegates to the existing `appendRequirements`** file path (Phase 1) — so one
+      endpoint, one button, profile-decided transport.
+- [ ] **Path safety unchanged for the file branch** (still routes through `PathSanitizer` +
+      `GitManager` per Conventions). The API branch performs **no** file/git write.
+- [ ] Type-mirror note: the request type is the existing `AppendIdeasRequest` (already
+      carries the same fields); the upsert *response* (`UpsertResponse`) is new and goes in
+      **both** `shared/types.ts` in lockstep (Conventions' mirror rule).
+- [ ] Popup: `handleExport` is retargeted from `/api/files/append-ideas` to
+      `/api/pipeline/upsert`. The success banner already in place (P2.5 A5) shows whichever
+      confirmation the route returns (file-based "Exported as {id}" *or* API-based "Sent to
+      {project} as {remoteId}"). No new popup surface for submit.
+- [ ] Test: `pipeline.test.ts` — file-fallback when `intakeApi` absent; HTTP POST when
+      present; auth-key lookup from the registry; secret never in the recorded request or
+      error. `api.test.ts` gains +1 route-registration assertion.
+
+### P3-4: Status descriptor + pipeline panel (additive, optional) — sequenced after P3-1/P3-2/P3-3
+> Under a **declarative** adapter, a read contract ("fetch the board", "poll status") is a
+> meaningfully richer thing than a single upsert POST. Forcing it into the same flat
+> `intakeApi` descriptor would over-scope Phase 3. Instead it is a **second optional
+> descriptor** a project *may* provide — so a profile can be submit-only (`intakeApi`) or
+> full-board (`intakeApi` + `statusApi`). The panel renders only when `statusApi` exists.
+> **P3-4 ships only after P3-1/P3-2/P3-3 land and stand alone.**
+- [ ] Extend the profile schema with an **optional** `statusApi` descriptor
+      (a `{ boardPath, itemPath, statusField, pollMs }` analogue to `intakeApi`) validated
+      by `validateProfileEntry()` when present.
+- [ ] Add `PipelineClient.listBoard()` / `.getItemStatus()` (read side of the same service).
+- [ ] Add `GET /api/pipeline/board` (in `pipeline.ts`) that proxies the board fetch through
+      `PipelineClient`; never exposes the target's auth to the extension directly.
+- [ ] New panel in the extension that shows the active project's board **only when
+      `statusApi` is present on its profile**; click item → full spec + artifacts. (The
+      DevTools panel already had a list/detail/search UI shape from P1.5-2 — candidate
+      surface; the popup's 384px width is too narrow for a board — confirm the UI surface
+      during P3-4 planning.)
+- [ ] **Polling, not realtime-sync** (the Out-of-Scope list keeps "real-time sync" deferred).
+      `pollMs` from the descriptor drives a periodic `GET /api/pipeline/board/...` refresh
+      and updates the panel: "In Progress → Review → Complete".
+- [ ] Test: `statusApi.test.ts` — board fetch + redaction; panel shows/hides on `statusApi`
+      presence; polling cadence respects `pollMs`.
+
+### Phase 3 build order
+P3-1 (descriptor) → P3-2 (`PipelineClient` + SSRF/auth rules) → P3-3 (route + popup, with
+file fallback) lands as a **standalone, testable submit capability**. P3-4 (status/board)
+is **additive** and only starts once P3-3 is green. A project with `intakeApi` only is a
+valid Phase 3 endpoint; `statusApi` is a power-up, not a requirement.
 
 ---
 
@@ -527,10 +653,13 @@ coupling to the target project's *internal* API begins — Phase 1 deliberately 
 
 ## Out of Scope (Explicitly Deferred)
 
-- [ ] wysiwyg directly modifying a target project's pipeline state (bypasses its own
-      6-stage loop) — only via that project's own API, in Phase 3.
-- [ ] Running a target project's tests from wysiwyg.
-- [ ] Real-time sync between wysiwyg and the target project's UIs.
+- [ ] wysiwyg directly modifying a registered project's pipeline state (bypasses that
+      project's own loop). Phase 3 only mutates intake **via that project's own API**, and
+      then only through the **per-profile `intakeApi` descriptor** — never by wysiwyg
+      writing the target's internal state files itself. See Phase 3 above.
+- [ ] Running a registered project's tests from wysiwyg.
+- [ ] Real-time sync between wysiwyg and a registered project's UIs. (Phase 3's P3-4 uses
+      **polling** via an optional `statusApi` descriptor; push-based realtime stays deferred.)
 - [ ] Automatic priority assignment (user decides; AI only suggests).
 
 ---
@@ -665,7 +794,7 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 
 ### Test results (re-verified 2026-07-10)
 
-> All green. **193 middleware + 104 extension = 297 tests passing.** Both packages
+> All green. **216 middleware + 104 extension = 320 tests passing.** Both packages
 > `tsc --noEmit` clean. Extension `npm run build` succeeds (popup + both workers).
 > (`docSync.test.ts` asserts the consolidated doc set rather than the pre-consolidation
 > file list; its count is included in the middleware total.)
@@ -683,24 +812,24 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
 | Middleware | `OpencodeClient.normalizePriority.test.ts` *(P1-6)* | 6 | ✅ |
 | Middleware | `OpencodeClient.streaming.test.ts` | 3 | ✅ |
 | Middleware | `OpencodeClient.test.ts` | 8 | ✅ |
-| Middleware | `ProfileManager.test.ts` *(P2-2)* | 19 | ✅ |
+| Middleware | `ProfileManager.test.ts` *(P2-2 + P3-1 +6)* | 25 | ✅ |
 | Middleware | `probeRoot.test.ts` *(P1-0)* | 13 | ✅ |
-| Middleware | `ProjectProfiles.test.ts` | 32 | ✅ |
+| Middleware | `ProjectProfiles.test.ts` *(P3-1 +17)* | 49 | ✅ |
 | Middleware | `PromptTemplates.requirements.test.ts` *(P2-4 +5)* | 17 | ✅ |
 | Middleware | `registryPlumbing.test.ts` *(P1-0)* | 9 | ✅ |
 | Middleware | `ResponseParser.test.ts` | 21 | ✅ |
 | Middleware | `SourcemapResolver.test.ts` | 7 | ✅ |
 | Middleware | `docSync.test.ts` *(doc-consistency guard)* | 18 | ✅ |
 | Middleware | `typesMirror.test.ts` *(P1-7 lockstep guard)* | 4 | ✅ |
-| **Middleware Total** | | **193** | ✅ |
+| **Middleware Total** | | **216** | ✅ |
 | Extension | `apply.test.ts` | 10 | ✅ |
 | Extension | `diff.test.ts` | 7 | ✅ |
 | Extension | `popup.profileSelection.test.ts` *(P2-3)* | 19 | ✅ |
 | Extension | `popup.requirements.test.ts` | 17 | ✅ |
 | Extension | `projectRegistry.test.ts` *(P1-0)* | 30 | ✅ |
 | Extension | `sanitize.test.ts` | 13 | ✅ |
-| **Extension Total** | | **96** | ✅ |
-| **Grand Total** | | **289** | ✅ |
+| **Extension Total** | | **104** | ✅ |
+| **Grand Total** | | **320** | ✅ |
 
 ### How this audit changed
 
@@ -742,6 +871,19 @@ Phase 2 (richer profile system on top of the P1-0 registry) is **complete** — 
   row counts (`ProfileManager` 35→19, `ProjectProfiles` 19→32) corrected against the live
   reporter. → **193 middleware + 104 extension = 297 tests**. **P2-4 + P2.5 complete → Phase 2
   done.** DevTools panel wired (P1.5-2, `b0d3196`). Next: Phase 3 (API Bridge) or the deferred E2E harness (P1.5-3).
+- **2026-07-11 (P3-1):** Intake adapter descriptor shipped. `ProjectProfile` gains the
+  optional `IntakeApi` block (`baseUrl`/`upsertPath`/`method: POST`/`auth` (a NAME)/
+  `bodyTemplate` flat map); `validateProfileEntry()` validates it when present (http(s)
+  scheme, leading-slash `upsertPath`, non-empty `auth`, string-valued `bodyTemplate`) and
+  **rejects** raw `apiKey`/`api_key`/`token`/`secret` fields at the load boundary (committed
+  profiles name the secret via `intakeApi.auth`; the real key lives in the registry). The
+  `example` built-in profile (in-code + on-disk `example.json`, kept in lockstep) ships an
+  `intakeApi` demo (`http://localhost:8006/api/ideas`, auth `exampleIntakeKey`); `generic`
+  stays without it (file-handoff default). `ProfileManager.cloneProfile` deep-clones
+  `intakeApi` + its nested `bodyTemplate`. Tests: `ProjectProfiles.test.ts` (+17 → 49) +
+  `ProfileManager.test.ts` (+6 → 25). → **216 middleware + 104 extension = 320 tests**.
+  `tsc --noEmit` clean both pkgs. **P3-1 complete.** Next: P3-2 (`PipelineClient` +
+  SSRF/auth rules) → P3-3 (route + popup, file fallback) → P3-4 (additive `statusApi`).
 
 ---
 

@@ -6,6 +6,7 @@ import {
   getProfile,
   PROFILES,
   validateProfileEntry,
+  type IntakeApi,
 } from '../src/config/project-profiles';
 
 describe('ProjectProfiles', () => {
@@ -260,6 +261,180 @@ describe('ProjectProfiles', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // P3-1: intakeApi (Phase 3 HTTP intake adapter) validation. The optional
+  // `intakeApi` block is what a future PipelineClient (P3-2) reads to POST the
+  // export; validateProfileEntry() is the load boundary that keeps a malformed
+  // descriptor out of the route, and the raw-secret backstop keeps a pasted-in
+  // secret out of a committed profile file. The shipped example.json exercises
+  // a valid block; generic.json omits it (file-handoff default).
+  // ---------------------------------------------------------------------------
+
+  describe('validateProfileEntry — P3-1 intakeApi', () => {
+    // Local base (the `valid` in the sibling validateProfileEntry describe is
+    // out of scope here): a minimal profile with only the required fields, used
+    // as the spread target for intakeApi-mutation cases below.
+    const valid = {
+      name: 'demo',
+      urlPatterns: ['localhost:3000'],
+      techStack: ['React'],
+      directories: { frontend: 'src/' },
+      artifactFormat: ['spec.md'],
+      promptContext: 'demo project',
+    };
+    const validIntakeApi: IntakeApi = {
+      baseUrl: 'http://localhost:9999',
+      upsertPath: '/api/ideas',
+      method: 'POST',
+      auth: 'demoIntakeKey',
+      bodyTemplate: { title: '{title}', spec: '{spec}' },
+    };
+
+    it('accepts a profile with a valid intakeApi block', () => {
+      const r = validateProfileEntry({ ...valid, intakeApi: validIntakeApi });
+      expect(r.valid).toBe(true);
+      if (r.valid) expect(r.entry.intakeApi?.upsertPath).toBe('/api/ideas');
+    });
+
+    it('accepts a profile with intakeApi absent (file-handoff default)', () => {
+      expect(validateProfileEntry(valid).valid).toBe(true);
+    });
+
+    it('rejects a non-object intakeApi', () => {
+      expect(validateProfileEntry({ ...valid, intakeApi: 'nope' }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, intakeApi: null }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, intakeApi: [] }).valid).toBe(false);
+    });
+
+    it('rejects a baseUrl that is not http(s)', () => {
+      const r = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, baseUrl: 'file:///etc/passwd' },
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('http(s)');
+      const ftp = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, baseUrl: 'ftp://x/y' },
+      });
+      expect(ftp.valid).toBe(false);
+    });
+
+    it('rejects an empty / unparseable baseUrl', () => {
+      expect(validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, baseUrl: '' } }).valid).toBe(false);
+      expect(validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, baseUrl: 'not a url' } }).valid).toBe(false);
+    });
+
+    it('allows http and https loopback baseUrls (realistic target runs locally)', () => {
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, baseUrl: 'http://127.0.0.1:8006' } }).valid,
+      ).toBe(true);
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, baseUrl: 'https://localhost:8006' } }).valid,
+      ).toBe(true);
+    });
+
+    it('rejects an upsertPath that does not start with "/"', () => {
+      const r = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, upsertPath: 'api/ideas' },
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('upsertPath');
+    });
+
+    it('rejects a method other than POST', () => {
+      const r = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, method: 'PUT' as any },
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('POST');
+    });
+
+    it('rejects an empty auth name', () => {
+      const r = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, auth: '' },
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('auth');
+    });
+
+    it('rejects a non-object / array bodyTemplate', () => {
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, bodyTemplate: 'nope' as any } }).valid,
+      ).toBe(false);
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, bodyTemplate: [] as any } }).valid,
+      ).toBe(false);
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, bodyTemplate: null as any } }).valid,
+      ).toBe(false);
+    });
+
+    it('rejects a bodyTemplate with non-string values', () => {
+      const r = validateProfileEntry({
+        ...valid,
+        intakeApi: { ...validIntakeApi, bodyTemplate: { title: '{title}', spec: 42 as any } },
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('bodyTemplate');
+    });
+
+    it('accepts an empty bodyTemplate (no body fields mapped — a no-op upsert)', () => {
+      expect(
+        validateProfileEntry({ ...valid, intakeApi: { ...validIntakeApi, bodyTemplate: {} } }).valid,
+      ).toBe(true);
+    });
+  });
+
+  describe('validateProfileEntry — P3-1 raw-secret backstop', () => {
+    // The profile JSON is committed to the repo; a raw secret must never ride
+    // it in. validateProfileEntry rejects the conventional raw-secret field
+    // names so a pasted-in key is caught at the load boundary, directing the
+    // author to name the secret via intakeApi.auth + store it in the registry.
+    const secretFields = ['apiKey', 'api_key', 'token', 'secret'] as const;
+
+    for (const field of secretFields) {
+      it(`rejects a raw "${field}" string field at the load boundary`, () => {
+        const r = validateProfileEntry({
+          name: 'demo',
+          urlPatterns: ['localhost:3000'],
+          techStack: ['React'],
+          directories: { frontend: 'src/' },
+          artifactFormat: ['spec.md'],
+          promptContext: 'demo project',
+          [field]: 'sk-live-REDACTED',
+        });
+        expect(r.valid).toBe(false);
+        if (!r.valid) expect(r.error).toContain(field);
+        if (!r.valid) expect(r.error).toContain('intakeApi.auth');
+      });
+    }
+
+    it('rejects a raw secret even when a valid intakeApi is also present', () => {
+      const r = validateProfileEntry({
+        name: 'demo',
+        urlPatterns: ['localhost:3000'],
+        techStack: ['React'],
+        directories: { frontend: 'src/' },
+        artifactFormat: ['spec.md'],
+        promptContext: 'demo project',
+        intakeApi: {
+          baseUrl: 'http://localhost:9999',
+          upsertPath: '/api/ideas',
+          method: 'POST',
+          auth: 'demoIntakeKey',
+          bodyTemplate: { title: '{title}' },
+        },
+        token: 'sk-live-REDACTED',
+      });
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.error).toContain('token');
+    });
+  });
+
   describe('shipped config/profiles/*.json', () => {
     const PROFILES_DIR = path.resolve(__dirname, '..', 'src', 'config', 'profiles');
 
@@ -282,6 +457,27 @@ describe('ProjectProfiles', () => {
       expect(json.intakeFile).toBe(code.intakeFile);
       expect(json.agents).toEqual(code.agents);
       expect(json.promptContext).toBe(code.promptContext);
+      // P3-1: the shipped example.json carries an intakeApi block (Phase 3 HTTP
+      // handoff demo) and it must stay in lockstep with the in-code profile.
+      expect(json.intakeApi).toEqual(code.intakeApi);
+      expect(json.intakeApi).toEqual({
+        baseUrl: 'http://localhost:8006',
+        upsertPath: '/api/ideas',
+        method: 'POST',
+        auth: 'exampleIntakeKey',
+        bodyTemplate: {
+          title: '{title}',
+          priority: '{priority}',
+          spec: '{spec}',
+          architectureHints: '{architectureHints}',
+          testScenarios: '{testScenarios}',
+          edgeCases: '{edgeCases}',
+        },
+      });
+      // `auth` is a NAME, never a raw secret — no conventional secret fields.
+      for (const secretField of ['apiKey', 'api_key', 'token', 'secret']) {
+        expect(json[secretField]).toBeUndefined();
+      }
     });
 
     it('JSON generic stays in lockstep with the in-code PROFILES.generic', async () => {
@@ -294,6 +490,10 @@ describe('ProjectProfiles', () => {
       expect(json.artifactFormat).toEqual(code.artifactFormat);
       expect(json.intakeFile).toBe(code.intakeFile);
       expect(json.promptContext).toBe(code.promptContext);
+      // P3-1: generic has NO intakeApi — unknown projects keep the Phase 1
+      // file-handoff default. Both the JSON and the in-code profile must agree.
+      expect(json.intakeApi).toBeUndefined();
+      expect(code.intakeApi).toBeUndefined();
     });
   });
 });

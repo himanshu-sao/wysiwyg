@@ -218,10 +218,10 @@ function defaultProfilesDir(): string {
 /**
  * Deep-enough copy of a ProjectProfile: top-level fields are copied, and the
  * mutable nested ones (arrays: urlPatterns/techStack/artifactFormat/agents/
- * markers/artifactTemplates; objects: directories/intakeLineFormat) are cloned
- * one level down so caller mutation can't reach the shared `PROFILES` table or
- * the JSON-profile cache. (`promptContext` is an immutable string; copying it is
- * a plain assignment.)
+ * markers/artifactTemplates; objects: directories/intakeLineFormat/intakeApi)
+ * are cloned one level down so caller mutation can't reach the shared `PROFILES`
+ * table or the JSON-profile cache. (`promptContext` is an immutable string;
+ * copying it is a plain assignment.)
  */
 function cloneProfile(p: ProjectProfile): ProjectProfile {
   return {
@@ -235,6 +235,12 @@ function cloneProfile(p: ProjectProfile): ProjectProfile {
     ...(p.intakeLineFormat ? { intakeLineFormat: { ...p.intakeLineFormat } } : {}),
     ...(p.artifactTemplates
       ? { artifactTemplates: p.artifactTemplates.map((t) => ({ name: t.name, sections: [...t.sections] })) }
+      : {}),
+    // Phase 3: deep-clone intakeApi + its nested bodyTemplate record so a caller
+    // mutating a resolved profile's adapter can't poison the shared PROFILES table or
+    // the JSON-profile cache (same reason intakeLineFormat is cloned above).
+    ...(p.intakeApi
+      ? { intakeApi: { ...p.intakeApi, bodyTemplate: { ...p.intakeApi.bodyTemplate } } }
       : {}),
   };
 }
